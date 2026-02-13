@@ -12,6 +12,7 @@
     },
     "type": "module",
     "dependencies": {
+        "convex": "^1.31.7",
         "jsonwebtoken": "^9.0.2",
         "passkit-generator": "^3.2.0",
         "uuid": "^9.0.1"

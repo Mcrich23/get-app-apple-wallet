@@ -10,6 +10,7 @@
 import { v4 as uuidv4 } from "uuid";
 import { authenticatePIN, retrieveBarcode, retrieveAccounts } from "./getClient";
 import { generatePass } from "./passGenerator";
+import { getConvexClient } from "./convexClient";
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
@@ -49,7 +50,9 @@ function json(data, status = 200, headers = {}) {
 /**
  * Generate a fresh pass buffer by fetching live data from the GET API.
  */
-async function buildPassBuffer(env, id, code) {
+async function buildPassBuffer(env, request, id, code) {
+    // Derive webServiceURL from the incoming request origin; env var is an optional override
+    const webServiceURL = env.WEB_SERVICE_URL || new URL(request.url).origin;
     const pin = code || env.GET_PIN;
     const deviceId = id || env.GET_DEVICE_ID;
 
@@ -85,7 +88,7 @@ async function buildPassBuffer(env, id, code) {
         authenticationToken: env.AUTH_TOKEN,
         balanceText,
         accountName,
-        webServiceURL: env.WEB_SERVICE_URL || "",
+        webServiceURL,
         env,
     });
 }
@@ -177,7 +180,7 @@ export default {
                 const code = url.searchParams.get("code");
 
                 // Allow fallback if not provided in URL
-                const passBuffer = await buildPassBuffer(env, id, code);
+                const passBuffer = await buildPassBuffer(env, request, id, code);
 
                 const filename = id ? `GetCard-${id}.pkpass` : "GetCard.pkpass";
 
@@ -203,9 +206,21 @@ export default {
                 const body = await request.json();
                 if (!body.pushToken) return json({ message: "pushToken required" }, 400);
 
-                // TODO: store registration (D1 or KV)
-                console.log(`[Register] device=${params.deviceLibId} serial=${params.serialNumber}`);
-                return json({ message: "Registration created" }, 201);
+                const convex = getConvexClient(env);
+                const result = await convex.registerDevice({
+                    deviceLibraryIdentifier: params.deviceLibId,
+                    pushToken: body.pushToken,
+                    passTypeIdentifier: params.passTypeId,
+                    serialNumber: params.serialNumber,
+                });
+
+                const status = result.isNew ? 201 : 200;
+                const message = result.isNew
+                    ? "Registration created"
+                    : "Registration already exists";
+
+                console.log(`[Register] device=${params.deviceLibId} serial=${params.serialNumber} status=${status}`);
+                return json({ message }, status);
             }
 
             // ── Apple Wallet: list passes for device ──
@@ -216,10 +231,24 @@ export default {
                     request
                 ))
             ) {
-                if (!verifyAppleAuth(request, env)) return json({ message: "Unauthorized" }, 401);
+                const passesUpdatedSince =
+                    new URL(request.url).searchParams.get("passesUpdatedSince") || null;
 
-                // TODO: query registrations (D1 or KV)
-                return new Response(null, { status: 204 });
+                const convex = getConvexClient(env);
+                const result = await convex.getPassesForDevice({
+                    deviceLibraryIdentifier: params.deviceLibId,
+                    passTypeIdentifier: params.passTypeId,
+                    passesUpdatedSince,
+                });
+
+                if (result.serialNumbers.length === 0) {
+                    return new Response(null, { status: 204 });
+                }
+
+                return json({
+                    serialNumbers: result.serialNumbers,
+                    lastUpdated: result.lastUpdated,
+                });
             }
 
             // ── Apple Wallet: get latest pass ──
@@ -233,7 +262,14 @@ export default {
                 if (!verifyAppleAuth(request, env)) return json({ message: "Unauthorized" }, 401);
 
                 console.log(`[Update] Generating fresh pass for serial=${params.serialNumber}`);
-                const passBuffer = await buildPassBuffer(env, params.serialNumber);
+                const passBuffer = await buildPassBuffer(env, request, params.serialNumber);
+
+                // Touch the pass in Convex to track when it was last served
+                const convex = getConvexClient(env);
+                await convex.touchPass({
+                    passTypeIdentifier: params.passTypeId,
+                    serialNumber: params.serialNumber,
+                });
 
                 return new Response(passBuffer, {
                     headers: {
@@ -254,9 +290,19 @@ export default {
             ) {
                 if (!verifyAppleAuth(request, env)) return json({ message: "Unauthorized" }, 401);
 
-                // TODO: delete registration (D1 or KV)
-                console.log(`[Unregister] device=${params.deviceLibId} serial=${params.serialNumber}`);
-                return json({ message: "Registration deleted" });
+                const convex = getConvexClient(env);
+                const result = await convex.unregisterDevice({
+                    deviceLibraryIdentifier: params.deviceLibId,
+                    passTypeIdentifier: params.passTypeId,
+                    serialNumber: params.serialNumber,
+                });
+
+                console.log(`[Unregister] device=${params.deviceLibId} serial=${params.serialNumber} deleted=${result.deleted}`);
+                return json({
+                    message: result.deleted
+                        ? "Registration deleted"
+                        : "No registration found",
+                });
             }
 
             // ── Apple Wallet: log endpoint ──
