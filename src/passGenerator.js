@@ -3,34 +3,35 @@
  * Creates .pkpass buffers with the user's GET dining barcode.
  */
 
-const fs = require("fs");
 const path = require("path");
 const { PKPass } = require("passkit-generator");
 
-// Resolve cert paths relative to project root
-const SECRETS_DIR = path.resolve(__dirname, "..", "Secrets");
+/**
+ * Parse a PEM string from an environment variable.
+ * Env vars store PEM content with literal "\n" sequences for newlines.
+ * Returns a Buffer, or undefined if the env var is not set.
+ */
+function parsePemEnv(envValue) {
+    if (!envValue) return undefined;
+    return Buffer.from(envValue.replace(/\\n/g, "\n"));
+}
 
 /**
- * Load signing certificates from disk.
+ * Load signing certificates from environment variables.
+ *
+ * Expected env vars:
+ *   SIGNER_CERT_PEM – signerCert.pem contents
+ *   SIGNER_KEY_PEM  – signerKey.pem contents
+ *   WWDR_PEM        – wwdr.pem contents
  */
 function loadCertificates() {
-    const signerCertPath = path.join(SECRETS_DIR, "signerCert.pem");
-    const signerKeyPath = path.join(SECRETS_DIR, "signerKey.pem");
-    const wwdrPath = path.join(SECRETS_DIR, "wwdr.pem");
-
     const certs = {
-        signerCert: fs.readFileSync(signerCertPath),
+        signerCert: parsePemEnv(process.env.SIGNER_CERT_PEM),
         signerKeyPassphrase: process.env.PASS_PHRASE || undefined,
     };
 
-    // signerKey and wwdr are optional at load-time so server can start
-    // even if certs aren't fully configured yet
-    if (fs.existsSync(signerKeyPath)) {
-        certs.signerKey = fs.readFileSync(signerKeyPath);
-    }
-    if (fs.existsSync(wwdrPath)) {
-        certs.wwdr = fs.readFileSync(wwdrPath);
-    }
+    certs.signerKey = parsePemEnv(process.env.SIGNER_KEY_PEM);
+    certs.wwdr = parsePemEnv(process.env.WWDR_PEM);
 
     return certs;
 }
@@ -55,14 +56,19 @@ async function generatePass({
 }) {
     const certs = loadCertificates();
 
+    if (!certs.signerCert) {
+        throw new Error(
+            "SIGNER_CERT_PEM env var is not set. Please set it to the contents of your signerCert.pem."
+        );
+    }
     if (!certs.signerKey) {
         throw new Error(
-            "signerKey.pem not found in Secrets/. Please export your pass signing private key."
+            "SIGNER_KEY_PEM env var is not set. Please set it to the contents of your signerKey.pem."
         );
     }
     if (!certs.wwdr) {
         throw new Error(
-            "wwdr.pem not found in Secrets/. Download Apple's WWDR certificate from https://www.apple.com/certificateauthority/"
+            "WWDR_PEM env var is not set. Download Apple's WWDR certificate from https://www.apple.com/certificateauthority/ and set the env var."
         );
     }
 
