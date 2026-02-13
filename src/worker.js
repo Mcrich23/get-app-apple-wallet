@@ -49,13 +49,16 @@ function json(data, status = 200, headers = {}) {
 /**
  * Generate a fresh pass buffer by fetching live data from the GET API.
  */
-async function buildPassBuffer(serialNumber, env) {
-    const pin = env.GET_PIN;
-    const deviceId = env.GET_DEVICE_ID;
+async function buildPassBuffer(env, id, code) {
+    const pin = code || env.GET_PIN;
+    const deviceId = id || env.GET_DEVICE_ID;
 
     if (!pin || !deviceId) {
-        throw new Error("GET_PIN and GET_DEVICE_ID must be set as secrets");
+        throw new Error("Missing pin (code) or deviceId (id). Set via query params or secrets.");
     }
+
+    // Use deviceId as serialNumber if available, or fallback to UUID
+    const serialNumber = deviceId || uuidv4();
 
     const sessionId = await authenticatePIN(pin, deviceId);
     const barcodePayload = await retrieveBarcode(sessionId);
@@ -128,13 +131,24 @@ const LANDING_HTML = `<!DOCTYPE html>
     }
     .btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.3); }
     .sub { margin-top: 16px; font-size: 0.85em; color: rgba(255,255,255,0.45); }
+    .input-group { margin-bottom: 20px; text-align: left; }
+    label { display: block; margin-bottom: 5px; font-size: 0.9em; }
+    input { width: 100%; padding: 10px; border-radius: 8px; border: none; margin-bottom: 10px; }
   </style>
 </head>
 <body>
   <div class="card">
     <h1>🎓 GET Card</h1>
-    <p>Add your UCSC dining barcode to Apple Wallet for quick scanning at any dining location.</p>
-    <a class="btn" href="/pass">Add to Apple Wallet</a>
+    <p>Enter your details to generate your pass.</p>
+    <form action="/pass" method="GET">
+      <div class="input-group">
+        <label for="id">Device ID</label>
+        <input type="text" name="id" placeholder="Device ID" required>
+        <label for="code">PIN Code</label>
+        <input type="text" name="code" placeholder="PIN Code" required>
+      </div>
+      <button class="btn" type="submit">Add to Apple Wallet</button>
+    </form>
     <p class="sub">Your barcode will automatically refresh.</p>
   </div>
 </body>
@@ -159,13 +173,18 @@ export default {
 
             // ── Download pass ──
             if (request.method === "GET" && url.pathname === "/pass") {
-                const serialNumber = env.GET_DEVICE_ID || uuidv4();
-                const passBuffer = await buildPassBuffer(serialNumber, env);
+                const id = url.searchParams.get("id");
+                const code = url.searchParams.get("code");
+
+                // Allow fallback if not provided in URL
+                const passBuffer = await buildPassBuffer(env, id, code);
+
+                const filename = id ? `GetCard-${id}.pkpass` : "GetCard.pkpass";
 
                 return new Response(passBuffer, {
                     headers: {
                         "Content-Type": "application/vnd.apple.pkpass",
-                        "Content-Disposition": 'attachment; filename="GetCard.pkpass"',
+                        "Content-Disposition": `attachment; filename="${filename}"`,
                         "Last-Modified": new Date().toUTCString(),
                     },
                 });
@@ -214,7 +233,7 @@ export default {
                 if (!verifyAppleAuth(request, env)) return json({ message: "Unauthorized" }, 401);
 
                 console.log(`[Update] Generating fresh pass for serial=${params.serialNumber}`);
-                const passBuffer = await buildPassBuffer(params.serialNumber, env);
+                const passBuffer = await buildPassBuffer(env, params.serialNumber);
 
                 return new Response(passBuffer, {
                     headers: {
