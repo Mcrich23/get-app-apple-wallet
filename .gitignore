@@ -2,3 +2,4 @@ get-tools-main/
 node_modules/
 /Secrets
 .env
+.DS_Store
