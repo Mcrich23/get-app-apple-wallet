@@ -95,17 +95,10 @@ async function generatePass({
     }
 
     // --- Parse pass.json ---
-    let template;
-    try {
-        const dec = new TextDecoder("utf-8");
-        const jsonStr = dec.decode(passJsonBuffer);
-        template = JSON.parse(jsonStr);
-    } catch (e) {
-        throw new Error("Failed to parse pass.json: " + e.message);
-    }
-
     const pass = new PKPass(
-        template,
+        {
+            "pass.json": Buffer.from(passJsonBuffer),
+        },
         {
             wwdr: certs.wwdr,
             signerCert: certs.signerCert,
