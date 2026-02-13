@@ -317,7 +317,7 @@ export const getAllPushTokens = internalQuery({
             passes.find((p) => p !== null)?.passTypeIdentifier || "";
 
         return devices
-            .filter((d) => d !== null)
+            .filter((d) => d !== null && d.deviceLibraryIdentifier !== "initial-download")
             .map((d) => ({
                 pushToken: d.pushToken,
                 passTypeIdentifier: passTypeId,

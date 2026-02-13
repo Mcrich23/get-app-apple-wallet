@@ -204,11 +204,9 @@ export default {
                 // Allow fallback if not provided in URL
                 const { passBuffer, serialNumber, authenticationToken, passTypeIdentifier } = await buildPassBuffer(env, request, id, code);
 
-                // Store the per-pass auth token in Convex
+                // Store the per-pass auth token in Convex (pass record only, no device)
                 const convex = getConvexClient(env);
-                await convex.registerDevice({
-                    deviceLibraryIdentifier: "initial-download",
-                    pushToken: "none",
+                await convex.upsertPass({
                     passTypeIdentifier,
                     serialNumber,
                     authenticationToken,

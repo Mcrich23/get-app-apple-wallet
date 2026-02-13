@@ -133,16 +133,16 @@ http.route({
     handler: touchPass,
 });
 
-// ─── Per-pass auth token lookup ──────────────────────────────────────
+// ─── Per-pass auth token storage ─────────────────────────────────────
 
-const storePass = httpAction(async (ctx, request) => {
+const upsertPass = httpAction(async (ctx, request) => {
     if (!verifyAuth(request)) {
         return jsonResponse({ error: "Unauthorized" }, 401);
     }
 
     const body = await request.json();
     const result = await ctx.runMutation(
-        internal.registrations.storePass,
+        internal.registrations.upsertPass,
         {
             passTypeIdentifier: body.passTypeIdentifier,
             serialNumber: body.serialNumber,
@@ -154,10 +154,12 @@ const storePass = httpAction(async (ctx, request) => {
 });
 
 http.route({
-    path: "/api/storePass",
+    path: "/api/upsertPass",
     method: "POST",
-    handler: storePass,
+    handler: upsertPass,
 });
+
+// ─── Per-pass auth token lookup ──────────────────────────────────────
 
 const getPassAuthToken = httpAction(async (ctx, request) => {
     if (!verifyAuth(request)) {
