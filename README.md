@@ -74,6 +74,7 @@ npx convex dev
 ```
 
 This will:
+
 - Prompt you to log in to Convex (or create an account)
 - Create a new project (or link to an existing one)
 - Deploy the schema and functions from `convex/`
@@ -85,13 +86,13 @@ Once deployed, note your **Convex deployment URL** — it will look like `https:
 
 In the [Convex dashboard](https://dashboard.convex.dev), go to **Settings → Environment Variables** and add:
 
-| Variable | Description |
-|---|---|
-| `AUTH_TOKEN` | A long random secret string (must match the Cloudflare Worker's `AUTH_TOKEN`) |
-| `APNS_KEY_ID` | 10-character Key ID from the Apple Developer portal |
-| `APNS_TEAM_ID` | Your Apple Developer Team ID |
-| `APNS_PRIVATE_KEY` | Contents of your `.p8` APNs auth key file (use `\n` for newlines) |
-| `APNS_ENVIRONMENT` | `production` or `development` (defaults to `production`) |
+| Variable           | Description                                                                   |
+| ------------------ | ----------------------------------------------------------------------------- |
+| `AUTH_TOKEN`       | A long random secret string (must match the Cloudflare Worker's `AUTH_TOKEN`) |
+| `APNS_KEY_ID`      | 10-character Key ID from the Apple Developer portal                           |
+| `APNS_TEAM_ID`     | Your Apple Developer Team ID                                                  |
+| `APNS_PRIVATE_KEY` | Contents of your `.p8` APNs auth key file (use `\n` for newlines)             |
+| `APNS_ENVIRONMENT` | `production` or `development` (defaults to `production`)                      |
 
 ### 4. Configure Cloudflare Worker Secrets
 
@@ -105,8 +106,6 @@ wrangler secret put SIGNER_CERT_PEM    # Pass signing certificate (PEM, with \n 
 wrangler secret put SIGNER_KEY_PEM     # Pass signing private key (PEM, with \n for newlines)
 wrangler secret put WWDR_PEM           # Apple WWDR certificate (PEM, with \n for newlines)
 wrangler secret put PASS_PHRASE        # Passphrase for signerKey.pem (leave empty if none)
-wrangler secret put GET_DEVICE_ID      # Optional: default GET device ID
-wrangler secret put GET_PIN            # Optional: default GET PIN
 ```
 
 ### 5. Deploy
@@ -157,57 +156,57 @@ Starts the Express server with `--watch` for auto-reload. Requires a `.env` file
 
 ### User-Facing
 
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/` | Landing page with Device ID / PIN form |
-| `GET` | `/pass?id=<deviceId>&code=<pin>` | Download a `.pkpass` file |
+| Method | Path                             | Description                            |
+| ------ | -------------------------------- | -------------------------------------- |
+| `GET`  | `/`                              | Landing page with Device ID / PIN form |
+| `GET`  | `/pass?id=<deviceId>&code=<pin>` | Download a `.pkpass` file              |
 
 ### Apple Wallet Web Service
 
 These endpoints implement the [Apple Wallet Web Service protocol](https://developer.apple.com/documentation/walletpasses/adding-a-web-service-to-update-passes):
 
-| Method | Path | Auth | Description |
-|---|---|---|---|
-| `POST` | `/v1/devices/:deviceLibId/registrations/:passTypeId/:serialNumber` | `ApplePass` | Register device for push updates |
-| `GET` | `/v1/devices/:deviceLibId/registrations/:passTypeId` | None | List updatable passes for a device |
-| `GET` | `/v1/passes/:passTypeId/:serialNumber` | `ApplePass` | Get latest version of a pass |
-| `DELETE` | `/v1/devices/:deviceLibId/registrations/:passTypeId/:serialNumber` | `ApplePass` | Unregister device |
-| `POST` | `/v1/log` | None | Apple Wallet error log receiver |
+| Method   | Path                                                               | Auth        | Description                        |
+| -------- | ------------------------------------------------------------------ | ----------- | ---------------------------------- |
+| `POST`   | `/v1/devices/:deviceLibId/registrations/:passTypeId/:serialNumber` | `ApplePass` | Register device for push updates   |
+| `GET`    | `/v1/devices/:deviceLibId/registrations/:passTypeId`               | None        | List updatable passes for a device |
+| `GET`    | `/v1/passes/:passTypeId/:serialNumber`                             | `ApplePass` | Get latest version of a pass       |
+| `DELETE` | `/v1/devices/:deviceLibId/registrations/:passTypeId/:serialNumber` | `ApplePass` | Unregister device                  |
+| `POST`   | `/v1/log`                                                          | None        | Apple Wallet error log receiver    |
 
 ### Convex HTTP Actions (internal)
 
 These are called by the Cloudflare Worker — not directly by clients. All require `Authorization: Bearer <AUTH_TOKEN>`.
 
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/api/registerDevice` | Store device + pass registration |
-| `POST` | `/api/unregisterDevice` | Remove a registration |
-| `GET` | `/api/getPassesForDevice` | Query passes updated since timestamp |
-| `POST` | `/api/touchPass` | Mark a pass as updated |
+| Method | Path                      | Description                          |
+| ------ | ------------------------- | ------------------------------------ |
+| `POST` | `/api/registerDevice`     | Store device + pass registration     |
+| `POST` | `/api/unregisterDevice`   | Remove a registration                |
+| `GET`  | `/api/getPassesForDevice` | Query passes updated since timestamp |
+| `POST` | `/api/touchPass`          | Mark a pass as updated               |
 
 ## Convex Database Schema
 
 ### `devices`
 
-| Field | Type | Description |
-|---|---|---|
+| Field                     | Type     | Description                        |
+| ------------------------- | -------- | ---------------------------------- |
 | `deviceLibraryIdentifier` | `string` | Unique device ID from Apple Wallet |
-| `pushToken` | `string` | APNs push token for the device |
+| `pushToken`               | `string` | APNs push token for the device     |
 
 ### `passes`
 
-| Field | Type | Description |
-|---|---|---|
-| `passTypeIdentifier` | `string` | e.g., `pass.com.mcrich.GetCard` |
-| `serialNumber` | `string` | Unique pass serial number |
-| `lastUpdated` | `number` | Epoch ms timestamp of last update |
+| Field                | Type     | Description                       |
+| -------------------- | -------- | --------------------------------- |
+| `passTypeIdentifier` | `string` | e.g., `pass.com.mcrich.GetCard`   |
+| `serialNumber`       | `string` | Unique pass serial number         |
+| `lastUpdated`        | `number` | Epoch ms timestamp of last update |
 
 ### `registrations`
 
-| Field | Type | Description |
-|---|---|---|
+| Field      | Type            | Description         |
+| ---------- | --------------- | ------------------- |
 | `deviceId` | `Id<"devices">` | Reference to device |
-| `passId` | `Id<"passes">` | Reference to pass |
+| `passId`   | `Id<"passes">`  | Reference to pass   |
 
 ## Security
 
@@ -235,14 +234,14 @@ Every 5 seconds:
 
 ## Scripts
 
-| Command | Description |
-|---|---|
-| `npm run dev` | Start Express server with auto-reload |
-| `npm run dev:workers` | Start local Wrangler dev server |
-| `npm run deploy` | Deploy Cloudflare Worker to production |
-| `npm run tail` | Tail Cloudflare Worker logs |
-| `npx convex dev` | Start Convex dev server (watch mode) |
-| `npx convex deploy` | Deploy Convex functions to production |
+| Command               | Description                            |
+| --------------------- | -------------------------------------- |
+| `npm run dev`         | Start Express server with auto-reload  |
+| `npm run dev:workers` | Start local Wrangler dev server        |
+| `npm run deploy`      | Deploy Cloudflare Worker to production |
+| `npm run tail`        | Tail Cloudflare Worker logs            |
+| `npx convex dev`      | Start Convex dev server (watch mode)   |
+| `npx convex deploy`   | Deploy Convex functions to production  |
 
 ## License
 
