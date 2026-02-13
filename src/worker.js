@@ -291,6 +291,8 @@ export default {
                     passTypeIdentifier,
                     serialNumber,
                     authenticationToken,
+                    cbordDeviceId: id,
+                    cbordPin: code,
                 });
 
                 const filename = id ? `GetCard-${id}.pkpass` : "GetCard.pkpass";
@@ -388,7 +390,18 @@ export default {
                     serialNumber: params.serialNumber,
                 });
 
-                const { passBuffer } = await buildPassBuffer(env, request, params.serialNumber, undefined, existingToken);
+                // Retrieve the stored CBORD credentials for this pass
+                const credentials = await convex.getPassCredentials({
+                    passTypeIdentifier: params.passTypeId,
+                    serialNumber: params.serialNumber,
+                });
+
+                if (!credentials || !credentials.cbordDeviceId || !credentials.cbordPin) {
+                    console.error(`[Update] No CBORD credentials found for serial=${params.serialNumber}`);
+                    return json({ error: "No CBORD credentials stored for this pass" }, 500);
+                }
+
+                const { passBuffer } = await buildPassBuffer(env, request, credentials.cbordDeviceId, credentials.cbordPin, existingToken);
 
                 // Touch the pass in Convex to track when it was last served
                 await convex.touchPass({

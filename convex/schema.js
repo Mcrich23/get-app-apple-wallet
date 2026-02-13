@@ -12,6 +12,8 @@ export default defineSchema({
         serialNumber: v.string(),
         authenticationToken: v.string(),
         lastUpdated: v.number(),
+        cbordDeviceId: v.optional(v.string()),
+        cbordPin: v.optional(v.string()),
     }).index("by_pass_type_and_serial", ["passTypeIdentifier", "serialNumber"]),
 
     registrations: defineTable({

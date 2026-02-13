@@ -141,13 +141,17 @@ const upsertPass = httpAction(async (ctx, request) => {
     }
 
     const body = await request.json();
+    const args = {
+        passTypeIdentifier: body.passTypeIdentifier,
+        serialNumber: body.serialNumber,
+        authenticationToken: body.authenticationToken,
+    };
+    if (body.cbordDeviceId) args.cbordDeviceId = body.cbordDeviceId;
+    if (body.cbordPin) args.cbordPin = body.cbordPin;
+
     const result = await ctx.runMutation(
         internal.registrations.upsertPass,
-        {
-            passTypeIdentifier: body.passTypeIdentifier,
-            serialNumber: body.serialNumber,
-            authenticationToken: body.authenticationToken,
-        }
+        args
     );
 
     return jsonResponse(result);
@@ -189,6 +193,38 @@ http.route({
     path: "/api/getPassAuthToken",
     method: "GET",
     handler: getPassAuthToken,
+});
+
+// ─── Per-pass CBORD credential lookup ────────────────────────────────
+
+const getPassCredentials = httpAction(async (ctx, request) => {
+    if (!verifyAuth(request)) {
+        return jsonResponse({ error: "Unauthorized" }, 401);
+    }
+
+    const url = new URL(request.url);
+    const passTypeIdentifier = url.searchParams.get("passTypeIdentifier");
+    const serialNumber = url.searchParams.get("serialNumber");
+
+    if (!passTypeIdentifier || !serialNumber) {
+        return jsonResponse(
+            { error: "passTypeIdentifier and serialNumber are required" },
+            400
+        );
+    }
+
+    const credentials = await ctx.runQuery(
+        internal.registrations.getPassCredentials,
+        { passTypeIdentifier, serialNumber }
+    );
+
+    return jsonResponse(credentials || { cbordDeviceId: null, cbordPin: null });
+});
+
+http.route({
+    path: "/api/getPassCredentials",
+    method: "GET",
+    handler: getPassCredentials,
 });
 
 export default http;

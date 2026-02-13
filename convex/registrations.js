@@ -237,6 +237,8 @@ export const upsertPass = internalMutation({
         passTypeIdentifier: v.string(),
         serialNumber: v.string(),
         authenticationToken: v.string(),
+        cbordDeviceId: v.optional(v.string()),
+        cbordPin: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
         const existingPass = await ctx.db
@@ -248,21 +250,48 @@ export const upsertPass = internalMutation({
             )
             .unique();
 
+        const patchData = {
+            authenticationToken: args.authenticationToken,
+            lastUpdated: Date.now(),
+        };
+        if (args.cbordDeviceId !== undefined) patchData.cbordDeviceId = args.cbordDeviceId;
+        if (args.cbordPin !== undefined) patchData.cbordPin = args.cbordPin;
+
         if (existingPass) {
-            await ctx.db.patch(existingPass._id, {
-                authenticationToken: args.authenticationToken,
-                lastUpdated: Date.now(),
-            });
+            await ctx.db.patch(existingPass._id, patchData);
         } else {
             await ctx.db.insert("passes", {
                 passTypeIdentifier: args.passTypeIdentifier,
                 serialNumber: args.serialNumber,
-                authenticationToken: args.authenticationToken,
-                lastUpdated: Date.now(),
+                ...patchData,
             });
         }
 
         return { ok: true };
+    },
+});
+
+/**
+ * Look up the CBORD GET credentials for a specific pass.
+ * Used by the worker to authenticate with CBORD GET and fetch a fresh barcode.
+ */
+export const getPassCredentials = internalQuery({
+    args: {
+        passTypeIdentifier: v.string(),
+        serialNumber: v.string(),
+    },
+    handler: async (ctx, args) => {
+        const pass = await ctx.db
+            .query("passes")
+            .withIndex("by_pass_type_and_serial", (q) =>
+                q
+                    .eq("passTypeIdentifier", args.passTypeIdentifier)
+                    .eq("serialNumber", args.serialNumber)
+            )
+            .unique();
+
+        if (!pass || !pass.cbordDeviceId || !pass.cbordPin) return null;
+        return { cbordDeviceId: pass.cbordDeviceId, cbordPin: pass.cbordPin };
     },
 });
 

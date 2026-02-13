@@ -110,6 +110,22 @@ export function getConvexClient(env) {
         },
 
         /**
+         * Get CBORD GET credentials for a specific pass.
+         */
+        async getPassCredentials(args) {
+            const params = new URLSearchParams({
+                passTypeIdentifier: args.passTypeIdentifier,
+                serialNumber: args.serialNumber,
+            });
+            const res = await fetch(
+                `${siteUrl}/api/getPassCredentials?${params.toString()}`,
+                { method: "GET", headers }
+            );
+            if (!res.ok) throw new Error(`Convex getPassCredentials failed: ${res.status}`);
+            return res.json();
+        },
+
+        /**
          * Touch a pass to mark it as updated.
          */
         async touchPass(args) {
