@@ -1,0 +1,29 @@
+{
+    "formatVersion": 1,
+    "passTypeIdentifier": "pass.com.mcrich.GetCard",
+    "teamIdentifier": "L7JQRVXU2V",
+    "organizationName": "GET Card",
+    "description": "UCSC GET Dining Card",
+    "foregroundColor": "rgb(255, 255, 255)",
+    "backgroundColor": "rgb(0, 51, 102)",
+    "labelColor": "rgb(200, 220, 255)",
+    "storeCard": {
+        "headerFields": [
+            {
+                "key": "balance",
+                "label": "BALANCE",
+                "value": "$0.00"
+            }
+        ],
+        "primaryFields": [],
+        "secondaryFields": [],
+        "auxiliaryFields": [],
+        "backFields": [
+            {
+                "key": "info",
+                "label": "About",
+                "value": "This pass displays your UCSC GET dining barcode. Present it at any dining location to pay with your meal plan."
+            }
+        ]
+    }
+}
