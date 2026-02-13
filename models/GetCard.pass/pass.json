@@ -8,13 +8,7 @@
     "backgroundColor": "rgb(0, 51, 102)",
     "labelColor": "rgb(200, 220, 255)",
     "storeCard": {
-        "headerFields": [
-            {
-                "key": "balance",
-                "label": "BALANCE",
-                "value": "$0.00"
-            }
-        ],
+        "headerFields": [],
         "primaryFields": [],
         "secondaryFields": [],
         "auxiliaryFields": [],
