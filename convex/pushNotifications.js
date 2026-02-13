@@ -89,64 +89,89 @@ export const sendPushNotifications = internalAction({
 
         const apnsHost =
             apnsEnv === "development"
-                ? "https://api.development.push.apple.com"
-                : "https://api.push.apple.com";
+                ? "api.development.push.apple.com"
+                : "api.push.apple.com";
 
         console.log(
             `[APNs] Sending push notifications to ${tokens.length} device(s)`
         );
 
-        // Send push to each device
-        const results = await Promise.allSettled(
-            tokens.map(async ({ pushToken, passTypeIdentifier }) => {
-                const response = await fetch(
-                    `${apnsHost}/3/device/${pushToken}`,
-                    {
-                        method: "POST",
-                        headers: {
-                            authorization: `bearer ${jwt}`,
-                            "apns-topic": passTypeIdentifier,
-                            "apns-push-type": "background",
-                            "apns-priority": "5",
-                        },
-                        body: JSON.stringify({}),
-                    }
-                );
+        // APNs requires HTTP/2 – Node's built-in fetch (undici) only supports HTTP/1.1
+        const http2 = await import("http2");
 
-                if (!response.ok) {
-                    const errorBody = await response.text();
-                    console.error(
-                        `[APNs] Push failed for token ${pushToken.substring(0, 8)}...: ${response.status} ${errorBody}`
-                    );
-                }
+        /**
+         * Send a single push notification over an HTTP/2 session.
+         * Returns a promise that resolves with { pushToken, status }.
+         */
+        function sendPush(session, pushToken, passTypeIdentifier) {
+            return new Promise((resolve, reject) => {
+                const req = session.request({
+                    ":method": "POST",
+                    ":path": `/3/device/${pushToken}`,
+                    authorization: `bearer ${jwt}`,
+                    "apns-topic": passTypeIdentifier,
+                    "apns-push-type": "background",
+                    "apns-priority": "5",
+                    "content-type": "application/json",
+                });
 
-                return { pushToken, status: response.status };
-            })
-        );
+                req.on("response", (headers) => {
+                    const status = headers[":status"];
+                    let body = "";
+                    req.on("data", (chunk) => { body += chunk; });
+                    req.on("end", () => {
+                        if (status !== 200) {
+                            console.error(
+                                `[APNs] Push failed for token ${pushToken.substring(0, 8)}...: ${status} ${body}`
+                            );
+                        }
+                        resolve({ pushToken, status });
+                    });
+                });
 
-        let succeeded = 0;
-        let failed = 0;
+                req.on("error", (err) => reject(err));
 
-        for (const result of results) {
-            if (result.status === "fulfilled" && result.value.status === 200) {
-                succeeded++;
-            } else {
-                failed++;
-                if (result.status === "rejected") {
-                    console.error(
-                        `[APNs] Push threw error: ${result.reason}`
-                    );
-                } else {
-                    const { pushToken, status } = result.value;
-                    console.error(
-                        `[APNs] Push failed for token ${pushToken.substring(0, 8)}...: HTTP ${status}`
-                    );
-                }
-            }
+                req.write(JSON.stringify({}));
+                req.end();
+            });
         }
 
-        console.log(
-            `[APNs] Push results: ${succeeded} succeeded, ${failed} failed`
-        );
+        // Open a single HTTP/2 session and multiplex all pushes over it
+        const session = http2.connect(`https://${apnsHost}`);
+
+        try {
+            const results = await Promise.allSettled(
+                tokens.map(({ pushToken, passTypeIdentifier }) =>
+                    sendPush(session, pushToken, passTypeIdentifier)
+                )
+            );
+
+            let succeeded = 0;
+            let failed = 0;
+
+            for (const result of results) {
+                if (result.status === "fulfilled" && result.value.status === 200) {
+                    succeeded++;
+                } else {
+                    failed++;
+                    if (result.status === "rejected") {
+                        console.error(
+                            `[APNs] Push threw error: ${result.reason}`
+                        );
+                    } else {
+                        const { pushToken, status } = result.value;
+                        console.error(
+                            `[APNs] Push failed for token ${pushToken.substring(0, 8)}...: HTTP ${status}`
+                        );
+                    }
+                }
+            }
+
+            console.log(
+                `[APNs] Push results: ${succeeded} succeeded, ${failed} failed`
+            );
+        } finally {
+            session.close();
+        }
     },
 });
