@@ -121,8 +121,6 @@ async function generatePass({
     pass.addBuffer("icon@2x.png", Buffer.from(icon2xBuffer));
     pass.addBuffer("logo.png", Buffer.from(logoBuffer));
     pass.addBuffer("logo@2x.png", Buffer.from(logo2xBuffer));
-    pass.addBuffer("strip.png", Buffer.from(stripBuffer));
-    pass.addBuffer("strip@2x.png", Buffer.from(strip2xBuffer));
 
     // --- Barcode ---
     // The GET app uses PDF417 barcodes scanned at UCSC dining locations
@@ -149,12 +147,12 @@ async function generatePass({
     //     });
     // }
 
-    // pass.secondaryFields.push({
-    //     key: "location",
-    //     label: "CAMPUS",
-    //     value: "UC Santa Cruz",
-    //     textAlignment: "PKTextAlignmentRight",
-    // });
+    pass.secondaryFields.push({
+        key: "location",
+        label: "CAMPUS",
+        value: "UC Santa Cruz",
+        textAlignment: "PKTextAlignmentRight",
+    });
 
     return pass.getAsBuffer();
 }
