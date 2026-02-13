@@ -5,20 +5,7 @@
     "compatibility_flags": [
         "nodejs_compat"
     ],
-    "rules": [
-        {
-            "type": "CompiledWasm",
-            "globs": [
-                "**/*.wasm"
-            ],
-            "fallthrough": true
-        },
-        {
-            "type": "Text",
-            "globs": [
-                "**/*.pass/**/*"
-            ],
-            "fallthrough": true
-        }
-    ]
+    "assets": {
+        "directory": "./models"
+    }
 }
