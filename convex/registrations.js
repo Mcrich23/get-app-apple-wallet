@@ -173,7 +173,7 @@ export const getPassesForDevice = query({
         const passes = await Promise.all(passIds.map((id) => ctx.db.get(id)));
 
         const sinceTimestamp = args.passesUpdatedSince
-            ? parseInt(args.passesUpdatedSince, 10)
+            ? parseInt(args.passesUpdatedSince, 10) || 0
             : 0;
 
         const filteredPasses = passes.filter(
