@@ -10,6 +10,7 @@ export default defineSchema({
     passes: defineTable({
         passTypeIdentifier: v.string(),
         serialNumber: v.string(),
+        authenticationToken: v.string(),
         lastUpdated: v.number(),
     }).index("by_pass_type_and_serial", ["passTypeIdentifier", "serialNumber"]),
 

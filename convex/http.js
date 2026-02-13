@@ -38,6 +38,7 @@ const registerDevice = httpAction(async (ctx, request) => {
             pushToken: body.pushToken,
             passTypeIdentifier: body.passTypeIdentifier,
             serialNumber: body.serialNumber,
+            authenticationToken: body.authenticationToken,
         }
     );
 
@@ -130,6 +131,38 @@ http.route({
     path: "/api/touchPass",
     method: "POST",
     handler: touchPass,
+});
+
+// ─── Per-pass auth token lookup ──────────────────────────────────────
+
+const getPassAuthToken = httpAction(async (ctx, request) => {
+    if (!verifyAuth(request)) {
+        return jsonResponse({ error: "Unauthorized" }, 401);
+    }
+
+    const url = new URL(request.url);
+    const passTypeIdentifier = url.searchParams.get("passTypeIdentifier");
+    const serialNumber = url.searchParams.get("serialNumber");
+
+    if (!passTypeIdentifier || !serialNumber) {
+        return jsonResponse(
+            { error: "passTypeIdentifier and serialNumber are required" },
+            400
+        );
+    }
+
+    const token = await ctx.runQuery(
+        internal.registrations.getPassAuthToken,
+        { passTypeIdentifier, serialNumber }
+    );
+
+    return jsonResponse({ authenticationToken: token });
+});
+
+http.route({
+    path: "/api/getPassAuthToken",
+    method: "GET",
+    handler: getPassAuthToken,
 });
 
 export default http;

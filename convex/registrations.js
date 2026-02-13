@@ -15,6 +15,7 @@ export const registerDevice = internalMutation({
         pushToken: v.string(),
         passTypeIdentifier: v.string(),
         serialNumber: v.string(),
+        authenticationToken: v.string(),
     },
     handler: async (ctx, args) => {
         // Find or create device
@@ -52,10 +53,15 @@ export const registerDevice = internalMutation({
         let passId;
         if (existingPass) {
             passId = existingPass._id;
+            // Update auth token if changed
+            if (existingPass.authenticationToken !== args.authenticationToken) {
+                await ctx.db.patch(passId, { authenticationToken: args.authenticationToken });
+            }
         } else {
             passId = await ctx.db.insert("passes", {
                 passTypeIdentifier: args.passTypeIdentifier,
                 serialNumber: args.serialNumber,
+                authenticationToken: args.authenticationToken,
                 lastUpdated: Date.now(),
             });
         }
@@ -218,6 +224,30 @@ export const touchPass = internalMutation({
         if (pass) {
             await ctx.db.patch(pass._id, { lastUpdated: Date.now() });
         }
+    },
+});
+
+/**
+ * Look up the authentication token for a specific pass.
+ * Used to verify Apple Wallet API requests per-pass.
+ */
+export const getPassAuthToken = internalQuery({
+    args: {
+        passTypeIdentifier: v.string(),
+        serialNumber: v.string(),
+    },
+    handler: async (ctx, args) => {
+        const pass = await ctx.db
+            .query("passes")
+            .withIndex("by_pass_type_and_serial", (q) =>
+                q
+                    .eq("passTypeIdentifier", args.passTypeIdentifier)
+                    .eq("serialNumber", args.serialNumber)
+            )
+            .unique();
+
+        if (!pass) return null;
+        return pass.authenticationToken;
     },
 });
 

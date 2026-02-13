@@ -33,10 +33,23 @@ function matchRoute(method, pattern, url) {
     return params;
 }
 
-/** Verify Apple Wallet auth header. */
-function verifyAppleAuth(request, env) {
+/** Verify Apple Wallet auth header against per-pass token stored in Convex. */
+async function verifyAppleAuth(request, env, passTypeId, serialNumber) {
     const authHeader = request.headers.get("Authorization");
-    return authHeader && authHeader === `ApplePass ${env.AUTH_TOKEN}`;
+    if (!authHeader || !authHeader.startsWith("ApplePass ")) return false;
+
+    const providedToken = authHeader.slice("ApplePass ".length);
+    try {
+        const convex = getConvexClient(env);
+        const expectedToken = await convex.getPassAuthToken({
+            passTypeIdentifier: passTypeId,
+            serialNumber,
+        });
+        return expectedToken && providedToken === expectedToken;
+    } catch (err) {
+        console.error("Auth token lookup failed:", err);
+        return false;
+    }
 }
 
 /** JSON response helper. */
@@ -63,6 +76,9 @@ async function buildPassBuffer(env, request, id, code) {
     // Use deviceId as serialNumber if available, or fallback to UUID
     const serialNumber = deviceId || uuidv4();
 
+    // Generate a unique random authentication token for this pass
+    const authenticationToken = crypto.randomUUID();
+
     const sessionId = await authenticatePIN(pin, deviceId);
     const barcodePayload = await retrieveBarcode(sessionId);
     const accounts = await retrieveAccounts(sessionId);
@@ -82,15 +98,17 @@ async function buildPassBuffer(env, request, id, code) {
         ? primaryAccount.accountDisplayName
         : "GET Account";
 
-    return generatePass({
+    const passBuffer = await generatePass({
         serialNumber,
         barcodePayload,
-        authenticationToken: env.AUTH_TOKEN,
+        authenticationToken,
         balanceText,
         accountName,
         webServiceURL,
         env,
     });
+
+    return { passBuffer, serialNumber, authenticationToken };
 }
 
 // ─── Landing page HTML ───────────────────────────────────────────────
@@ -180,7 +198,17 @@ export default {
                 const code = url.searchParams.get("code");
 
                 // Allow fallback if not provided in URL
-                const passBuffer = await buildPassBuffer(env, request, id, code);
+                const { passBuffer, serialNumber, authenticationToken } = await buildPassBuffer(env, request, id, code);
+
+                // Store the per-pass auth token in Convex
+                const convex = getConvexClient(env);
+                await convex.registerDevice({
+                    deviceLibraryIdentifier: "initial-download",
+                    pushToken: "none",
+                    passTypeIdentifier: env.PASS_ID,
+                    serialNumber,
+                    authenticationToken,
+                });
 
                 const filename = id ? `GetCard-${id}.pkpass` : "GetCard.pkpass";
 
@@ -201,17 +229,24 @@ export default {
                     request
                 ))
             ) {
-                if (!verifyAppleAuth(request, env)) return json({ message: "Unauthorized" }, 401);
+                if (!(await verifyAppleAuth(request, env, params.passTypeId, params.serialNumber))) return json({ message: "Unauthorized" }, 401);
 
                 const body = await request.json();
                 if (!body.pushToken) return json({ message: "pushToken required" }, 400);
 
+                // Look up the existing auth token for this pass
                 const convex = getConvexClient(env);
+                const existingToken = await convex.getPassAuthToken({
+                    passTypeIdentifier: params.passTypeId,
+                    serialNumber: params.serialNumber,
+                });
+
                 const result = await convex.registerDevice({
                     deviceLibraryIdentifier: params.deviceLibId,
                     pushToken: body.pushToken,
                     passTypeIdentifier: params.passTypeId,
                     serialNumber: params.serialNumber,
+                    authenticationToken: existingToken || crypto.randomUUID(),
                 });
 
                 const status = result.isNew ? 201 : 200;
@@ -259,10 +294,10 @@ export default {
                     request
                 ))
             ) {
-                if (!verifyAppleAuth(request, env)) return json({ message: "Unauthorized" }, 401);
+                if (!(await verifyAppleAuth(request, env, params.passTypeId, params.serialNumber))) return json({ message: "Unauthorized" }, 401);
 
                 console.log(`[Update] Generating fresh pass for serial=${params.serialNumber}`);
-                const passBuffer = await buildPassBuffer(env, request, params.serialNumber);
+                const { passBuffer } = await buildPassBuffer(env, request, params.serialNumber);
 
                 // Touch the pass in Convex to track when it was last served
                 const convex = getConvexClient(env);
@@ -288,7 +323,7 @@ export default {
                     request
                 ))
             ) {
-                if (!verifyAppleAuth(request, env)) return json({ message: "Unauthorized" }, 401);
+                if (!(await verifyAppleAuth(request, env, params.passTypeId, params.serialNumber))) return json({ message: "Unauthorized" }, 401);
 
                 const convex = getConvexClient(env);
                 const result = await convex.unregisterDevice({

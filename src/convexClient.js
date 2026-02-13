@@ -48,6 +48,23 @@ export function getConvexClient(env) {
         },
 
         /**
+         * Get the authentication token for a specific pass.
+         */
+        async getPassAuthToken(args) {
+            const params = new URLSearchParams({
+                passTypeIdentifier: args.passTypeIdentifier,
+                serialNumber: args.serialNumber,
+            });
+            const res = await fetch(
+                `${siteUrl}/api/getPassAuthToken?${params.toString()}`,
+                { method: "GET", headers }
+            );
+            if (!res.ok) throw new Error(`Convex getPassAuthToken failed: ${res.status}`);
+            const data = await res.json();
+            return data.authenticationToken;
+        },
+
+        /**
          * Unregister a device from a pass.
          */
         async unregisterDevice(args) {

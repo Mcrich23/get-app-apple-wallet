@@ -40,6 +40,9 @@ async function buildPassBuffer(serialNumber) {
         throw new Error("GET_PIN and GET_DEVICE_ID must be set in .env");
     }
 
+    // Generate a unique random authentication token for this pass
+    const authenticationToken = crypto.randomUUID();
+
     // Authenticate and fetch barcode + accounts
     const sessionId = await authenticatePIN(pin, deviceId);
     const barcodePayload = await retrieveBarcode(sessionId);
@@ -66,7 +69,7 @@ async function buildPassBuffer(serialNumber) {
     return generatePass({
         serialNumber,
         barcodePayload,
-        authenticationToken: process.env.AUTH_TOKEN,
+        authenticationToken,
         balanceText,
         accountName,
     });
