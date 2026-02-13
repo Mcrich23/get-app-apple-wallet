@@ -13,7 +13,12 @@ const { PKPass } = require("passkit-generator");
  */
 function parsePemEnv(envValue) {
     if (!envValue) return undefined;
-    return Buffer.from(envValue.replace(/\\n/g, "\n"));
+    const pem = envValue.replace(/\\n/g, "\n");
+    // Workers: use TextEncoder if Buffer is unavailable
+    if (typeof Buffer !== "undefined") {
+        return Buffer.from(pem);
+    }
+    return new TextEncoder().encode(pem);
 }
 
 /**
@@ -24,14 +29,14 @@ function parsePemEnv(envValue) {
  *   SIGNER_KEY_PEM  – signerKey.pem contents
  *   WWDR_PEM        – wwdr.pem contents
  */
-function loadCertificates() {
+function loadCertificates(env) {
     const certs = {
-        signerCert: parsePemEnv(process.env.SIGNER_CERT_PEM),
-        signerKeyPassphrase: process.env.PASS_PHRASE || undefined,
+        signerCert: parsePemEnv(env.SIGNER_CERT_PEM),
+        signerKeyPassphrase: env.PASS_PHRASE || undefined,
     };
 
-    certs.signerKey = parsePemEnv(process.env.SIGNER_KEY_PEM);
-    certs.wwdr = parsePemEnv(process.env.WWDR_PEM);
+    certs.signerKey = parsePemEnv(env.SIGNER_KEY_PEM);
+    certs.wwdr = parsePemEnv(env.WWDR_PEM);
 
     return certs;
 }
@@ -53,8 +58,12 @@ async function generatePass({
     authenticationToken,
     balanceText,
     accountName,
+    webServiceURL,
+    env,
 }) {
-    const certs = loadCertificates();
+    // Use provided env, fall back to process.env for Node.js
+    const e = env || process.env;
+    const certs = loadCertificates(e);
 
     if (!certs.signerCert) {
         throw new Error(
@@ -87,7 +96,7 @@ async function generatePass({
         {
             serialNumber,
             authenticationToken,
-            webServiceURL: process.env.WEB_SERVICE_URL || "",
+            webServiceURL: webServiceURL || e.WEB_SERVICE_URL || "",
             organizationName: "UCSC GET Card",
             description: "UCSC GET Dining Card",
             logoText: "GET Card",
