@@ -96,11 +96,12 @@ async function buildPassBuffer(env, request, id, code, existingAuthToken) {
     );
     const balanceText = `$${totalBalance.toFixed(2)}`;
 
-    const primaryAccount =
-        activeAccounts.find((a) => a.accountType === 3) || activeAccounts[0];
-    const accountName = primaryAccount
-        ? primaryAccount.accountDisplayName
-        : "GET Account";
+    // const primaryAccount =
+        // activeAccounts.find((a) => a.accountType === 3) || activeAccounts[0];
+    // const accountName = primaryAccount
+    //     ? primaryAccount.accountDisplayName
+    //     : "GET Account";
+    const accountName = "Slug Points";
 
     const passBuffer = await generatePass({
         serialNumber,
