@@ -107,21 +107,20 @@ async function generatePass({
     const pass = new PKPass(
         template,
         {
+            wwdr: certs.wwdr,
+            signerCert: certs.signerCert,
+            signerKey: certs.signerKey,
+            signerKeyPassphrase: certs.signerKeyPassphrase,
+        },
+        {
             serialNumber,
             authenticationToken,
             webServiceURL: webServiceURL || e.WEB_SERVICE_URL || "",
             organizationName: "UCSC GET Card",
             description: "UCSC GET Dining Card",
             logoText: "GET Card",
-            certificates: {
-                wwdr: certs.wwdr,
-                signerCert: certs.signerCert,
-                signerKey: certs.signerKey,
-                signerKeyPassphrase: certs.signerKeyPassphrase,
-            },
         }
     );
-
     // Inject images
     pass.addBuffer("icon.png", Buffer.from(iconBuffer));
     pass.addBuffer("icon@2x.png", Buffer.from(icon2xBuffer));
