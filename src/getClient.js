@@ -25,6 +25,48 @@ async function makeGETRequest(service, method, params = {}) {
 }
 
 /**
+ * Register a new deviceId + PIN pair with an existing session.
+ * This mirrors the pattern in get-tools-main/src/onboarding/Onboarding.svelte.
+ * @param {string} sessionId - existing authenticated session
+ * @param {string} deviceId  - randomly generated device ID
+ * @param {string} pin       - randomly generated PIN
+ * @returns {Promise<boolean>} true if successful
+ */
+async function createPIN(sessionId, deviceId, pin) {
+    const { response, exception } = await makeGETRequest(
+        "user",
+        "createPIN",
+        {
+            sessionId,
+            deviceId,
+            PIN: pin,
+        }
+    );
+
+    if (exception) {
+        throw new Error(`GET createPIN failed: ${JSON.stringify(exception)}`);
+    }
+    if (response !== true) {
+        throw new Error("createPIN returned unexpected response");
+    }
+    return true;
+}
+
+/**
+ * Generate a random deviceId and PIN, matching get-tools-main.
+ * @returns {{ deviceId: string, pin: string }}
+ */
+function generateCredentials() {
+    const deviceId = Math.round(Math.random() * 100_000_000_000_000_000)
+        .toString(16)
+        .padStart(16, "9");
+    const pin = Math.floor(Math.random() * 9999)
+        .toString()
+        .padStart(4, "0");
+    return { deviceId, pin };
+}
+
+/**
  * Authenticate with PIN + deviceId and return a sessionId.
  * @param {string} pin
  * @param {string} deviceId
@@ -85,4 +127,4 @@ async function retrieveAccounts(sessionId) {
     return response.accounts || [];
 }
 
-export { authenticatePIN, retrieveBarcode, retrieveAccounts };
+export { createPIN, generateCredentials, authenticatePIN, retrieveBarcode, retrieveAccounts };

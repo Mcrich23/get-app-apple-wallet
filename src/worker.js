@@ -8,7 +8,7 @@
  */
 
 import { v4 as uuidv4 } from "uuid";
-import { authenticatePIN, retrieveBarcode, retrieveAccounts } from "./getClient";
+import { createPIN, generateCredentials, authenticatePIN, retrieveBarcode, retrieveAccounts } from "./getClient";
 import { generatePass } from "./passGenerator";
 import { getConvexClient } from "./convexClient";
 import passJsonBuffer from "../models/GetCard.pass/pass.json";
@@ -138,11 +138,11 @@ const LANDING_HTML = `<!DOCTYPE html>
       border-radius: 20px;
       padding: 40px;
       text-align: center;
-      max-width: 420px;
+      max-width: 460px;
       border: 1px solid rgba(255,255,255,0.15);
     }
     h1 { font-size: 1.8em; margin-bottom: 8px; }
-    p { color: rgba(255,255,255,0.7); margin-bottom: 24px; }
+    p { color: rgba(255,255,255,0.7); margin-bottom: 20px; }
     .btn {
       display: inline-block;
       background: white;
@@ -153,29 +153,97 @@ const LANDING_HTML = `<!DOCTYPE html>
       font-weight: 600;
       font-size: 1.05em;
       transition: transform 0.15s, box-shadow 0.15s;
+      border: none;
+      cursor: pointer;
     }
     .btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.3); }
+    .btn:disabled { opacity: 0.5; transform: none; cursor: not-allowed; }
     .sub { margin-top: 16px; font-size: 0.85em; color: rgba(255,255,255,0.45); }
-    .input-group { margin-bottom: 20px; text-align: left; }
-    label { display: block; margin-bottom: 5px; font-size: 0.9em; }
-    input { width: 100%; padding: 10px; border-radius: 8px; border: none; margin-bottom: 10px; }
+    .steps { text-align: left; margin-bottom: 24px; }
+    .step { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 16px; }
+    .step-num {
+      background: rgba(255,255,255,0.2);
+      width: 28px; height: 28px; min-width: 28px;
+      border-radius: 50%; display: flex;
+      align-items: center; justify-content: center;
+      font-weight: 700; font-size: 0.85em;
+    }
+    .step-num.active { background: white; color: #003366; }
+    .step-content p { margin-bottom: 8px; color: rgba(255,255,255,0.85); }
+    .link-input {
+      width: 100%; padding: 12px; border-radius: 10px;
+      border: 2px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.3);
+      color: white; font-size: 0.95em; outline: none;
+      transition: border-color 0.2s;
+    }
+    .link-input:focus { border-color: rgba(255,255,255,0.5); }
+    .link-input::placeholder { color: rgba(255,255,255,0.35); }
+    .error { color: #ff6b6b; font-size: 0.85em; margin-top: 8px; display: none; }
+    .loading { display: none; margin: 20px auto; }
+    .loading.show { display: block; }
+    .spinner {
+      width: 32px; height: 32px; border: 3px solid rgba(255,255,255,0.2);
+      border-top-color: white; border-radius: 50%; margin: 0 auto 10px;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
   <div class="card">
-    <h1>🎓 GET Card</h1>
-    <p>Enter your details to generate your pass.</p>
-    <form action="/pass" method="GET">
-      <div class="input-group">
-        <label for="id">Device ID</label>
-        <input type="text" name="id" placeholder="Device ID" required>
-        <label for="code">PIN Code</label>
-        <input type="text" name="code" placeholder="PIN Code" required>
+    <h1>\ud83c\udf93 GET Card</h1>
+    <p>Add your UCSC dining barcode to Apple Wallet.</p>
+    <div id="form-section">
+      <div class="steps">
+        <div class="step">
+          <div class="step-num active">1</div>
+          <div class="step-content">
+            <p>Sign in with your UCSC account:</p>
+            <a class="btn" href="https://get.cbord.com/ucsc/full/login.php?mobileapp=1" target="_blank" rel="noopener noreferrer" style="font-size:0.9em; padding:10px 20px;">Log in with UCSC \u2197</a>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num active">2</div>
+          <div class="step-content">
+            <p>Once you see \u201cvalidated\u201d, copy the page URL and paste it here:</p>
+            <input type="text" id="link-input" class="link-input" placeholder="Paste the validated URL here\u2026" autocomplete="off">
+            <div id="error-msg" class="error">Hmm, that doesn\u2019t look like a valid link. Try again?</div>
+          </div>
+        </div>
       </div>
-      <button class="btn" type="submit">Add to Apple Wallet</button>
-    </form>
-    <p class="sub">Your barcode will automatically refresh.</p>
+    </div>
+    <div id="loading-section" class="loading">
+      <div class="spinner"></div>
+      <p style="color:rgba(255,255,255,0.8)">Generating your pass\u2026</p>
+    </div>
+    <p class="sub">Your barcode will automatically refresh once added.</p>
   </div>
+  <script>
+    var input = document.getElementById('link-input');
+    var errorMsg = document.getElementById('error-msg');
+    var formSection = document.getElementById('form-section');
+    var loadingSection = document.getElementById('loading-section');
+    var UUID_RE = /([0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})/;
+
+    input.addEventListener('input', function() {
+      errorMsg.style.display = 'none';
+      var val = input.value.trim();
+      if (val.length >= 32) {
+        var match = val.match(UUID_RE);
+        if (match) {
+          submitSession(match[1]);
+        } else {
+          errorMsg.style.display = 'block';
+        }
+      }
+    });
+
+    function submitSession(sessionId) {
+      formSection.style.display = 'none';
+      loadingSection.classList.add('show');
+      window.location.href = '/pass?sessionId=' + encodeURIComponent(sessionId);
+    }
+  </script>
 </body>
 </html>`;
 
@@ -198,10 +266,23 @@ export default {
 
             // ── Download pass ──
             if (request.method === "GET" && url.pathname === "/pass") {
-                const id = url.searchParams.get("id");
-                const code = url.searchParams.get("code");
+                const sessionId = url.searchParams.get("sessionId");
 
-                // Allow fallback if not provided in URL
+                let id, code;
+
+                if (sessionId) {
+                    // URL-based login flow: auto-generate credentials from session
+                    const creds = generateCredentials();
+                    await createPIN(sessionId, creds.deviceId, creds.pin);
+                    id = creds.deviceId;
+                    code = creds.pin;
+                    console.log(`[Pass] Created credentials for session, deviceId=${id}`);
+                } else {
+                    // Legacy fallback: manual id/code params or env vars
+                    id = url.searchParams.get("id");
+                    code = url.searchParams.get("code");
+                }
+
                 const { passBuffer, serialNumber, authenticationToken, passTypeIdentifier } = await buildPassBuffer(env, request, id, code);
 
                 // Store the per-pass auth token in Convex (pass record only, no device)
