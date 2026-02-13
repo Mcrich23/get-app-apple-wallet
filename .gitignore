@@ -7,3 +7,4 @@ package-lock.json
 /.wrangler
 
 .env.local
+convex/_generated/
