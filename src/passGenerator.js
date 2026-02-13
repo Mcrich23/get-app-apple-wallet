@@ -81,7 +81,8 @@ async function generatePass({
         );
     }
 
-    const modelPath = path.resolve(__dirname, "..", "models", "GetCard.pass");
+    // Use relative path instead of __dirname for Cloudflare Workers compatibility
+    const modelPath = path.resolve("./models/GetCard.pass");
 
     const pass = await PKPass.from(
         {
