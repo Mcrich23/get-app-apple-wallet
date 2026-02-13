@@ -124,10 +124,26 @@ export const sendPushNotifications = internalAction({
             })
         );
 
-        const succeeded = results.filter(
-            (r) => r.status === "fulfilled" && r.value.status === 200
-        ).length;
-        const failed = results.length - succeeded;
+        let succeeded = 0;
+        let failed = 0;
+
+        for (const result of results) {
+            if (result.status === "fulfilled" && result.value.status === 200) {
+                succeeded++;
+            } else {
+                failed++;
+                if (result.status === "rejected") {
+                    console.error(
+                        `[APNs] Push threw error: ${result.reason}`
+                    );
+                } else {
+                    const { pushToken, status } = result.value;
+                    console.error(
+                        `[APNs] Push failed for token ${pushToken.substring(0, 8)}...: HTTP ${status}`
+                    );
+                }
+            }
+        }
 
         console.log(
             `[APNs] Push results: ${succeeded} succeeded, ${failed} failed`
