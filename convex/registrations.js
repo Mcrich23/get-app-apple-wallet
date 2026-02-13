@@ -1,15 +1,15 @@
-import { mutation, query, internalQuery, internalMutation } from "./_generated/server";
+import { internalMutation, internalQuery } from "./_generated/server";
 import { v } from "convex/values";
 
 // ─── Device Registration ─────────────────────────────────────────────
 
 /**
  * Register a device for push notifications on a pass.
- * Called when Apple Wallet sends POST /v1/devices/:deviceLibId/registrations/:passTypeId/:serialNumber
+ * Internal only — called via authenticated HTTP endpoint.
  *
  * Returns { isNew: boolean } indicating whether this is a new registration.
  */
-export const registerDevice = mutation({
+export const registerDevice = internalMutation({
     args: {
         deviceLibraryIdentifier: v.string(),
         pushToken: v.string(),
@@ -83,9 +83,9 @@ export const registerDevice = mutation({
 
 /**
  * Unregister a device from a pass.
- * Called when Apple Wallet sends DELETE /v1/devices/:deviceLibId/registrations/:passTypeId/:serialNumber
+ * Internal only — called via authenticated HTTP endpoint.
  */
-export const unregisterDevice = mutation({
+export const unregisterDevice = internalMutation({
     args: {
         deviceLibraryIdentifier: v.string(),
         passTypeIdentifier: v.string(),
@@ -142,9 +142,9 @@ export const unregisterDevice = mutation({
 /**
  * Get serial numbers of passes registered to a device that have been updated
  * since a given timestamp.
- * Called when Apple Wallet sends GET /v1/devices/:deviceLibId/registrations/:passTypeId
+ * Internal only — called via authenticated HTTP endpoint.
  */
-export const getPassesForDevice = query({
+export const getPassesForDevice = internalQuery({
     args: {
         deviceLibraryIdentifier: v.string(),
         passTypeIdentifier: v.string(),
@@ -198,8 +198,9 @@ export const getPassesForDevice = query({
 
 /**
  * Touch a pass to mark it as updated (updates the lastUpdated timestamp).
+ * Internal only — called via authenticated HTTP endpoint.
  */
-export const touchPass = mutation({
+export const touchPass = internalMutation({
     args: {
         passTypeIdentifier: v.string(),
         serialNumber: v.string(),

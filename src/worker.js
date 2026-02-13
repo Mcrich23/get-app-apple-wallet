@@ -11,7 +11,6 @@ import { v4 as uuidv4 } from "uuid";
 import { authenticatePIN, retrieveBarcode, retrieveAccounts } from "./getClient";
 import { generatePass } from "./passGenerator";
 import { getConvexClient } from "./convexClient";
-import { api } from "../convex/_generated/api";
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
@@ -206,15 +205,12 @@ export default {
                 if (!body.pushToken) return json({ message: "pushToken required" }, 400);
 
                 const convex = getConvexClient(env);
-                const result = await convex.mutation(
-                    api.registrations.registerDevice,
-                    {
-                        deviceLibraryIdentifier: params.deviceLibId,
-                        pushToken: body.pushToken,
-                        passTypeIdentifier: params.passTypeId,
-                        serialNumber: params.serialNumber,
-                    }
-                );
+                const result = await convex.registerDevice({
+                    deviceLibraryIdentifier: params.deviceLibId,
+                    pushToken: body.pushToken,
+                    passTypeIdentifier: params.passTypeId,
+                    serialNumber: params.serialNumber,
+                });
 
                 const status = result.isNew ? 201 : 200;
                 const message = result.isNew
@@ -237,14 +233,11 @@ export default {
                     new URL(request.url).searchParams.get("passesUpdatedSince") || null;
 
                 const convex = getConvexClient(env);
-                const result = await convex.query(
-                    api.registrations.getPassesForDevice,
-                    {
-                        deviceLibraryIdentifier: params.deviceLibId,
-                        passTypeIdentifier: params.passTypeId,
-                        passesUpdatedSince,
-                    }
-                );
+                const result = await convex.getPassesForDevice({
+                    deviceLibraryIdentifier: params.deviceLibId,
+                    passTypeIdentifier: params.passTypeId,
+                    passesUpdatedSince,
+                });
 
                 if (result.serialNumbers.length === 0) {
                     return new Response(null, { status: 204 });
@@ -271,7 +264,7 @@ export default {
 
                 // Touch the pass in Convex to track when it was last served
                 const convex = getConvexClient(env);
-                await convex.mutation(api.registrations.touchPass, {
+                await convex.touchPass({
                     passTypeIdentifier: params.passTypeId,
                     serialNumber: params.serialNumber,
                 });
@@ -296,14 +289,11 @@ export default {
                 if (!verifyAppleAuth(request, env)) return json({ message: "Unauthorized" }, 401);
 
                 const convex = getConvexClient(env);
-                const result = await convex.mutation(
-                    api.registrations.unregisterDevice,
-                    {
-                        deviceLibraryIdentifier: params.deviceLibId,
-                        passTypeIdentifier: params.passTypeId,
-                        serialNumber: params.serialNumber,
-                    }
-                );
+                const result = await convex.unregisterDevice({
+                    deviceLibraryIdentifier: params.deviceLibId,
+                    passTypeIdentifier: params.passTypeId,
+                    serialNumber: params.serialNumber,
+                });
 
                 console.log(`[Unregister] device=${params.deviceLibId} serial=${params.serialNumber} deleted=${result.deleted}`);
                 return json({
