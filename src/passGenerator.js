@@ -5,6 +5,14 @@
 
 const path = require("path");
 const { PKPass } = require("passkit-generator");
+const { fileURLToPath } = require("url");
+
+// Workers bundles as ESM, so __dirname isn't defined.
+// Derive it from import.meta.url when available, otherwise fall back.
+const __current_dir =
+    typeof __dirname !== "undefined"
+        ? __dirname
+        : path.dirname(fileURLToPath(import.meta.url));
 
 /**
  * Parse a PEM string from an environment variable.
@@ -81,7 +89,7 @@ async function generatePass({
         );
     }
 
-    const modelPath = path.resolve(__dirname, "..", "models", "GetCard.pass");
+    const modelPath = path.resolve(__current_dir, "..", "models", "GetCard.pass");
 
     const pass = await PKPass.from(
         {
