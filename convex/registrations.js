@@ -228,6 +228,45 @@ export const touchPass = internalMutation({
 });
 
 /**
+ * Create or update a pass record with its authentication token.
+ * Does NOT create any device or registration — used at initial pass download
+ * so the auth token is stored before Apple Wallet registers the real device.
+ */
+export const upsertPass = internalMutation({
+    args: {
+        passTypeIdentifier: v.string(),
+        serialNumber: v.string(),
+        authenticationToken: v.string(),
+    },
+    handler: async (ctx, args) => {
+        const existingPass = await ctx.db
+            .query("passes")
+            .withIndex("by_pass_type_and_serial", (q) =>
+                q
+                    .eq("passTypeIdentifier", args.passTypeIdentifier)
+                    .eq("serialNumber", args.serialNumber)
+            )
+            .unique();
+
+        if (existingPass) {
+            await ctx.db.patch(existingPass._id, {
+                authenticationToken: args.authenticationToken,
+                lastUpdated: Date.now(),
+            });
+        } else {
+            await ctx.db.insert("passes", {
+                passTypeIdentifier: args.passTypeIdentifier,
+                serialNumber: args.serialNumber,
+                authenticationToken: args.authenticationToken,
+                lastUpdated: Date.now(),
+            });
+        }
+
+        return { ok: true };
+    },
+});
+
+/**
  * Look up the authentication token for a specific pass.
  * Used to verify Apple Wallet API requests per-pass.
  */

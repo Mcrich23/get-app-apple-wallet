@@ -65,6 +65,19 @@ export function getConvexClient(env) {
         },
 
         /**
+         * Store or update a pass record (auth token) without creating a device registration.
+         */
+        async upsertPass(args) {
+            const res = await fetch(`${siteUrl}/api/upsertPass`, {
+                method: "POST",
+                headers,
+                body: JSON.stringify(args),
+            });
+            if (!res.ok) throw new Error(`Convex upsertPass failed: ${res.status}`);
+            return res.json();
+        },
+
+        /**
          * Unregister a device from a pass.
          */
         async unregisterDevice(args) {

@@ -135,6 +135,30 @@ http.route({
 
 // ─── Per-pass auth token lookup ──────────────────────────────────────
 
+const storePass = httpAction(async (ctx, request) => {
+    if (!verifyAuth(request)) {
+        return jsonResponse({ error: "Unauthorized" }, 401);
+    }
+
+    const body = await request.json();
+    const result = await ctx.runMutation(
+        internal.registrations.storePass,
+        {
+            passTypeIdentifier: body.passTypeIdentifier,
+            serialNumber: body.serialNumber,
+            authenticationToken: body.authenticationToken,
+        }
+    );
+
+    return jsonResponse(result);
+});
+
+http.route({
+    path: "/api/storePass",
+    method: "POST",
+    handler: storePass,
+});
+
 const getPassAuthToken = httpAction(async (ctx, request) => {
     if (!verifyAuth(request)) {
         return jsonResponse({ error: "Unauthorized" }, 401);
