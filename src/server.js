@@ -9,6 +9,7 @@ const express = require("express");
 const { v4: uuidv4 } = require("uuid");
 const { authenticatePIN, retrieveBarcode, retrieveAccounts } = require("./getClient");
 const { generatePass } = require("./passGenerator");
+const db = require("./db");
 
 const app = express();
 app.use(express.json());
@@ -169,17 +170,35 @@ app.post(
     (req, res) => {
         if (!verifyAppleAuth(req, res)) return;
 
-        const { deviceLibId, serialNumber } = req.params;
-        const { pushToken } = req.body;
+        try {
+            const { deviceLibId, passTypeId, serialNumber } = req.params;
+            const { pushToken } = req.body;
 
-        if (!pushToken) {
-            return res.status(400).json({ message: "pushToken required" });
+            if (!pushToken) {
+                return res.status(400).json({ message: "pushToken required" });
+            }
+
+            const device = db.findOrCreateDevice(deviceLibId, pushToken);
+            const pass = db.findOrCreatePass(
+                passTypeId,
+                serialNumber,
+                process.env.AUTH_TOKEN
+            );
+            const registration = db.findOrCreateRegistration(device.id, pass.id);
+
+            const status = registration.isNew ? 201 : 200;
+            const message = registration.isNew
+                ? "Registration created"
+                : "Registration already exists";
+
+            console.log(
+                `[Register] device=${deviceLibId} serial=${serialNumber} status=${status}`
+            );
+            res.status(status).json({ message });
+        } catch (err) {
+            console.error("Registration error:", err);
+            res.status(500).json({ message: "Internal Server Error" });
         }
-
-        console.log(
-            `[Register] device=${deviceLibId} serial=${serialNumber} pushToken=${pushToken}`
-        );
-        res.status(201).json({ message: "Registration created" });
     }
 );
 
@@ -193,11 +212,30 @@ app.get(
     (req, res) => {
         if (!verifyAppleAuth(req, res)) return;
 
-        console.log(
-            `[List Passes] device=${req.params.deviceLibId} passType=${req.params.passTypeId}`
-        );
-        // No passes stored, return 204 No Content
-        res.status(204).end();
+        try {
+            const { deviceLibId, passTypeId } = req.params;
+            const passesUpdatedSince = req.query.passesUpdatedSince || null;
+
+            const passes = db.getPassesForDevice(
+                deviceLibId,
+                passTypeId,
+                passesUpdatedSince
+            );
+
+            if (passes.length === 0) {
+                return res.status(204).end();
+            }
+
+            const serialNumbers = passes.map((p) => p.serial_number);
+            const lastUpdated = Math.max(
+                ...passes.map((p) => p.last_updated)
+            ).toString();
+
+            res.json({ serialNumbers, lastUpdated });
+        } catch (err) {
+            console.error("List passes error:", err);
+            res.status(500).json({ message: "Internal Server Error" });
+        }
     }
 );
 
@@ -214,6 +252,9 @@ app.get("/v1/passes/:passTypeId/:serialNumber", async (req, res) => {
 
         console.log(`[Update] Generating fresh pass for serial=${serialNumber}`);
         const passBuffer = await buildPassBuffer(serialNumber);
+
+        // Touch the pass so we track when it was last served
+        db.touchPass(req.params.passTypeId, serialNumber);
 
         res.set({
             "Content-Type": "application/vnd.apple.pkpass",
@@ -236,12 +277,30 @@ app.delete(
     (req, res) => {
         if (!verifyAppleAuth(req, res)) return;
 
-        const { deviceLibId, serialNumber } = req.params;
+        try {
+            const { deviceLibId, serialNumber } = req.params;
 
-        console.log(
-            `[Unregister] device=${deviceLibId} serial=${serialNumber}`
-        );
-        res.json({ message: "Registration deleted" });
+            const deleted = db.deleteRegistration(deviceLibId, serialNumber);
+
+            if (deleted) {
+                console.log(
+                    `[Unregister] device=${deviceLibId} serial=${serialNumber}`
+                );
+                return res.json({ message: "Registration deleted" });
+            }
+
+            // If registration not found, try to clean up the device
+            const device = db.findDevice(deviceLibId);
+            if (device) {
+                db.deleteDevice(device.id);
+                return res.json({ message: "Device deleted" });
+            }
+
+            res.json({ message: "No registration found" });
+        } catch (err) {
+            console.error("Unregister error:", err);
+            res.status(500).json({ message: "Internal Server Error" });
+        }
     }
 );
 

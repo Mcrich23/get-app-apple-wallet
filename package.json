@@ -6,14 +6,12 @@
     "scripts": {
         "start": "node index.js",
         "dev": "node --watch index.js",
-        "dev:node": "node --watch index.js",
         "dev:workers": "wrangler dev",
         "deploy": "wrangler deploy",
         "tail": "wrangler tail"
     },
     "dependencies": {
         "better-sqlite3": "^11.0.0",
-        "dotenv": "^16.4.7",
         "express": "^4.21.0",
         "jsonwebtoken": "^9.0.2",
         "passkit-generator": "^3.2.0",
