@@ -1,6 +1,6 @@
 # 🎓 GET Card – Apple Wallet
 
-An Apple Wallet pass server for UCSC GET Card dining barcodes. Generates `.pkpass` files with live barcode and balance data, and automatically refreshes passes every 5 seconds via APNs push notifications.
+An Apple Wallet pass server for UCSC GET Card dining barcodes. Generates `.pkpass` files with live barcode and balance data, and automatically refreshes passes every 3 seconds via APNs push notifications.
 
 ## Architecture
 
@@ -20,7 +20,7 @@ An Apple Wallet pass server for UCSC GET Card dining barcodes. Generates `.pkpas
 1. A user visits the landing page, enters their GET Device ID and PIN, and downloads a `.pkpass` file.
 2. When the pass is added to Apple Wallet, iOS registers the device with the Cloudflare Worker (`POST /v1/devices/.../registrations/...`).
 3. The Worker stores the device push token in Convex via authenticated HTTP calls.
-4. A Convex cron job runs every **5 seconds**, sending empty APNs push notifications to all registered devices.
+4. A Convex cron job runs every **3 seconds**, sending empty APNs push notifications to all registered devices.
 5. When iOS receives the push, it calls back to the Worker to fetch a fresh pass with up-to-date barcode and balance data from the GET API.
 
 ## Project Structure
@@ -220,7 +220,7 @@ These are called by the Cloudflare Worker — not directly by clients. All requi
 ## Pass Auto-Update Flow
 
 ```
-Every 5 seconds:
+Every 3 seconds:
   1. Convex cron job fires
   2. pushNotifications.js queries all registered push tokens
   3. touchAllPasses() bumps lastUpdated on every pass
