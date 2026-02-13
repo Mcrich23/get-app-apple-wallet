@@ -10,6 +10,8 @@
 import { v4 as uuidv4 } from "uuid";
 import { authenticatePIN, retrieveBarcode, retrieveAccounts } from "./getClient";
 import { generatePass } from "./passGenerator";
+import { getConvexClient } from "./convexClient";
+import { api } from "../convex/_generated/api";
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
@@ -203,9 +205,24 @@ export default {
                 const body = await request.json();
                 if (!body.pushToken) return json({ message: "pushToken required" }, 400);
 
-                // TODO: store registration (D1 or KV)
-                console.log(`[Register] device=${params.deviceLibId} serial=${params.serialNumber}`);
-                return json({ message: "Registration created" }, 201);
+                const convex = getConvexClient(env);
+                const result = await convex.mutation(
+                    api.registrations.registerDevice,
+                    {
+                        deviceLibraryIdentifier: params.deviceLibId,
+                        pushToken: body.pushToken,
+                        passTypeIdentifier: params.passTypeId,
+                        serialNumber: params.serialNumber,
+                    }
+                );
+
+                const status = result.isNew ? 201 : 200;
+                const message = result.isNew
+                    ? "Registration created"
+                    : "Registration already exists";
+
+                console.log(`[Register] device=${params.deviceLibId} serial=${params.serialNumber} status=${status}`);
+                return json({ message }, status);
             }
 
             // ── Apple Wallet: list passes for device ──
@@ -216,10 +233,27 @@ export default {
                     request
                 ))
             ) {
-                if (!verifyAppleAuth(request, env)) return json({ message: "Unauthorized" }, 401);
+                const passesUpdatedSince =
+                    new URL(request.url).searchParams.get("passesUpdatedSince") || null;
 
-                // TODO: query registrations (D1 or KV)
-                return new Response(null, { status: 204 });
+                const convex = getConvexClient(env);
+                const result = await convex.query(
+                    api.registrations.getPassesForDevice,
+                    {
+                        deviceLibraryIdentifier: params.deviceLibId,
+                        passTypeIdentifier: params.passTypeId,
+                        passesUpdatedSince,
+                    }
+                );
+
+                if (result.serialNumbers.length === 0) {
+                    return new Response(null, { status: 204 });
+                }
+
+                return json({
+                    serialNumbers: result.serialNumbers,
+                    lastUpdated: result.lastUpdated,
+                });
             }
 
             // ── Apple Wallet: get latest pass ──
@@ -234,6 +268,13 @@ export default {
 
                 console.log(`[Update] Generating fresh pass for serial=${params.serialNumber}`);
                 const passBuffer = await buildPassBuffer(env, params.serialNumber);
+
+                // Touch the pass in Convex to track when it was last served
+                const convex = getConvexClient(env);
+                await convex.mutation(api.registrations.touchPass, {
+                    passTypeIdentifier: params.passTypeId,
+                    serialNumber: params.serialNumber,
+                });
 
                 return new Response(passBuffer, {
                     headers: {
@@ -254,9 +295,22 @@ export default {
             ) {
                 if (!verifyAppleAuth(request, env)) return json({ message: "Unauthorized" }, 401);
 
-                // TODO: delete registration (D1 or KV)
-                console.log(`[Unregister] device=${params.deviceLibId} serial=${params.serialNumber}`);
-                return json({ message: "Registration deleted" });
+                const convex = getConvexClient(env);
+                const result = await convex.mutation(
+                    api.registrations.unregisterDevice,
+                    {
+                        deviceLibraryIdentifier: params.deviceLibId,
+                        passTypeIdentifier: params.passTypeId,
+                        serialNumber: params.serialNumber,
+                    }
+                );
+
+                console.log(`[Unregister] device=${params.deviceLibId} serial=${params.serialNumber} deleted=${result.deleted}`);
+                return json({
+                    message: result.deleted
+                        ? "Registration deleted"
+                        : "No registration found",
+                });
             }
 
             // ── Apple Wallet: log endpoint ──
