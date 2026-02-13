@@ -10,9 +10,8 @@
         "deploy": "wrangler deploy",
         "tail": "wrangler tail"
     },
+    "type": "module",
     "dependencies": {
-        "better-sqlite3": "^11.0.0",
-        "express": "^4.21.0",
         "jsonwebtoken": "^9.0.2",
         "passkit-generator": "^3.2.0",
         "uuid": "^9.0.1"

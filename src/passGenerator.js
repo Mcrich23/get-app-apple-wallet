@@ -3,8 +3,14 @@
  * Creates .pkpass buffers with the user's GET dining barcode.
  */
 
-const path = require("path");
-const { PKPass } = require("passkit-generator");
+import { PKPass } from "passkit-generator";
+
+// Import model assets as ArrayBuffers (requires wrangler module rules)
+import passJsonBuffer from "../models/GetCard.pass/pass.json";
+import iconBuffer from "../models/GetCard.pass/icon.png";
+import icon2xBuffer from "../models/GetCard.pass/icon@2x.png";
+import logoBuffer from "../models/GetCard.pass/logo.png";
+import logo2xBuffer from "../models/GetCard.pass/logo@2x.png";
 
 /**
  * Parse a PEM string from an environment variable.
@@ -13,7 +19,14 @@ const { PKPass } = require("passkit-generator");
  */
 function parsePemEnv(envValue) {
     if (!envValue) return undefined;
-    const pem = envValue.replace(/\\n/g, "\n");
+    // Remove surrounding quotes if present and trim whitespace
+    let pem = envValue.trim();
+    if ((pem.startsWith('"') && pem.endsWith('"')) || (pem.startsWith("'") && pem.endsWith("'"))) {
+        pem = pem.slice(1, -1);
+    }
+    // Replace literal "\n" sequences with actual newlines
+    pem = pem.replace(/\\n/g, "\n");
+
     // Workers: use TextEncoder if Buffer is unavailable
     if (typeof Buffer !== "undefined") {
         return Buffer.from(pem);
@@ -81,19 +94,18 @@ async function generatePass({
         );
     }
 
-    // Use relative path instead of __dirname for Cloudflare Workers compatibility
-    const modelPath = path.resolve("./models/GetCard.pass");
+    // --- Parse pass.json ---
+    let template;
+    try {
+        const dec = new TextDecoder("utf-8");
+        const jsonStr = dec.decode(passJsonBuffer);
+        template = JSON.parse(jsonStr);
+    } catch (e) {
+        throw new Error("Failed to parse pass.json: " + e.message);
+    }
 
-    const pass = await PKPass.from(
-        {
-            model: modelPath,
-            certificates: {
-                wwdr: certs.wwdr,
-                signerCert: certs.signerCert,
-                signerKey: certs.signerKey,
-                signerKeyPassphrase: certs.signerKeyPassphrase,
-            },
-        },
+    const pass = new PKPass(
+        template,
         {
             serialNumber,
             authenticationToken,
@@ -101,8 +113,20 @@ async function generatePass({
             organizationName: "UCSC GET Card",
             description: "UCSC GET Dining Card",
             logoText: "GET Card",
+            certificates: {
+                wwdr: certs.wwdr,
+                signerCert: certs.signerCert,
+                signerKey: certs.signerKey,
+                signerKeyPassphrase: certs.signerKeyPassphrase,
+            },
         }
     );
+
+    // Inject images
+    pass.addBuffer("icon.png", Buffer.from(iconBuffer));
+    pass.addBuffer("icon@2x.png", Buffer.from(icon2xBuffer));
+    pass.addBuffer("logo.png", Buffer.from(logoBuffer));
+    pass.addBuffer("logo@2x.png", Buffer.from(logo2xBuffer));
 
     // --- Barcode ---
     // The GET app uses PDF417 barcodes scanned at UCSC dining locations
@@ -139,4 +163,4 @@ async function generatePass({
     return pass.getAsBuffer();
 }
 
-module.exports = { generatePass };
+export { generatePass };

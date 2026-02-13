@@ -85,4 +85,4 @@ async function retrieveAccounts(sessionId) {
     return response.accounts || [];
 }
 
-module.exports = { authenticatePIN, retrieveBarcode, retrieveAccounts };
+export { authenticatePIN, retrieveBarcode, retrieveAccounts };
