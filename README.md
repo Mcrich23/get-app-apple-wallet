@@ -8,20 +8,26 @@ An Apple Wallet pass server for UCSC GET Card dining barcodes. Generates `.pkpas
 ┌─────────────┐         ┌─────────────────────┐         ┌──────────────────┐
 │ Apple Wallet │◄───────►│  Cloudflare Worker   │◄───────►│     Convex DB    │
 │   (iOS)      │  HTTPS  │  (src/worker.js)     │  HTTP   │  (convex/*.js)   │
-└──────┬───────┘         └─────────────────────┘         └────────┬─────────┘
-       │                                                          │
-       │  APNs push (every 5s)                                    │
-       │◄─────────────────────────────────────────────────────────┘
-       │                          Convex cron → pushNotifications.js
+└──────┬───────┘         └──────────┬───────────┘         └────────┬─────────┘
+       │                            │                               │
+       │  APNs push (every 3s)      │  GET API                     │
+       │◄───────────────────────────┼───────────────────────────────┘
+       │                            │   Convex cron → pushNotifications.js
+       │                            ▼
+       │                  ┌──────────────────┐
+       │                  │  Cbord GET API   │
+       │                  │  (barcodes/bal.) │
+       │                  └──────────────────┘
 ```
 
 **How it works:**
 
-1. A user visits the landing page, enters their GET Device ID and PIN, and downloads a `.pkpass` file.
-2. When the pass is added to Apple Wallet, iOS registers the device with the Cloudflare Worker (`POST /v1/devices/.../registrations/...`).
-3. The Worker stores the device push token in Convex via authenticated HTTP calls.
-4. A Convex cron job runs every **3 seconds**, sending empty APNs push notifications to all registered devices.
-5. When iOS receives the push, it calls back to the Worker to fetch a fresh pass with up-to-date barcode and balance data from the GET API.
+1. A user visits the landing page, logs in via the UCSC GET portal, and pastes the resulting session URL.
+2. The Worker extracts the session ID, auto-generates CBORD credentials (device ID + PIN), and returns a `.pkpass` file.
+3. When the pass is added to Apple Wallet, iOS registers the device with the Cloudflare Worker (`POST /v1/devices/.../registrations/...`).
+4. The Worker stores the device push token in Convex via authenticated HTTP calls.
+5. A Convex cron job runs every **3 seconds**, sending empty APNs push notifications to all registered devices.
+6. When iOS receives the push, it calls back to the Worker to fetch a fresh pass with up-to-date barcode and balance data from the GET API.
 
 ## Project Structure
 
@@ -38,7 +44,7 @@ An Apple Wallet pass server for UCSC GET Card dining barcodes. Generates `.pkpas
 │   ├── registrations.js   # Internal mutations & queries for CRUD
 │   ├── http.js            # Authenticated HTTP router (Bearer token)
 │   ├── pushNotifications.js # APNs push notification action
-│   └── crons.js           # 5-second cron job for push notifications
+│   └── crons.js           # 3-second cron job for push notifications
 ├── models/
 │   └── GetCard.pass/      # Pass template (pass.json, icons, logos)
 ├── index.js               # Node.js/Express entry point (alternative)
@@ -56,7 +62,6 @@ An Apple Wallet pass server for UCSC GET Card dining barcodes. Generates `.pkpas
   - A pass signing certificate (`.p12` → export as PEM)
   - Apple's WWDR intermediate certificate
   - An APNs authentication key (`.p8` file) for push notifications
-- GET API credentials (Device ID and PIN from a UCSC GET account)
 
 ## Setup
 
@@ -102,12 +107,13 @@ Set each secret using the Wrangler CLI:
 ```bash
 wrangler secret put AUTH_TOKEN         # Same value as Convex AUTH_TOKEN
 wrangler secret put CONVEX_SITE_URL    # e.g., https://your-project-123.convex.site
-wrangler secret put WEB_SERVICE_URL    # Your Worker's public URL (e.g., https://get-wallet.yourname.workers.dev)
 wrangler secret put SIGNER_CERT_PEM    # Pass signing certificate (PEM, with \n for newlines)
 wrangler secret put SIGNER_KEY_PEM     # Pass signing private key (PEM, with \n for newlines)
 wrangler secret put WWDR_PEM           # Apple WWDR certificate (PEM, with \n for newlines)
 wrangler secret put PASS_PHRASE        # Passphrase for signerKey.pem (leave empty if none)
 ```
+
+> **Note:** `WEB_SERVICE_URL` is optional. If omitted, it is auto-detected from the incoming request origin.
 
 ### 5. Deploy
 
@@ -117,7 +123,7 @@ wrangler secret put PASS_PHRASE        # Passphrase for signerKey.pem (leave emp
 npx convex deploy
 ```
 
-This deploys the Convex functions, schema, cron jobs, and HTTP routes. The 5-second cron job will start running immediately after deployment.
+This deploys the Convex functions, schema, cron jobs, and HTTP routes. The 3-second cron job will start running immediately after deployment.
 
 #### Deploy Cloudflare Worker (frontend)
 
@@ -157,10 +163,12 @@ Starts the Express server with `--watch` for auto-reload. Requires a `.env` file
 
 ### User-Facing
 
-| Method | Path                             | Description                            |
-| ------ | -------------------------------- | -------------------------------------- |
-| `GET`  | `/`                              | Landing page with Device ID / PIN form |
-| `GET`  | `/pass?id=<deviceId>&code=<pin>` | Download a `.pkpass` file              |
+| Method | Path                          | Description                                            |
+| ------ | ----------------------------- | ------------------------------------------------------ |
+| `GET`  | `/`                           | Landing page — log in via UCSC and paste session URL   |
+| `GET`  | `/pass?sessionId=<sessionId>` | Download a `.pkpass` file (auto-generates credentials) |
+
+The `/pass` endpoint also accepts legacy `?id=<deviceId>&code=<pin>` query params as a fallback.
 
 ### Apple Wallet Web Service
 
@@ -178,12 +186,15 @@ These endpoints implement the [Apple Wallet Web Service protocol](https://develo
 
 These are called by the Cloudflare Worker — not directly by clients. All require `Authorization: Bearer <AUTH_TOKEN>`.
 
-| Method | Path                      | Description                          |
-| ------ | ------------------------- | ------------------------------------ |
-| `POST` | `/api/registerDevice`     | Store device + pass registration     |
-| `POST` | `/api/unregisterDevice`   | Remove a registration                |
-| `GET`  | `/api/getPassesForDevice` | Query passes updated since timestamp |
-| `POST` | `/api/touchPass`          | Mark a pass as updated               |
+| Method | Path                      | Description                                               |
+| ------ | ------------------------- | --------------------------------------------------------- |
+| `POST` | `/api/registerDevice`     | Store device + pass registration                          |
+| `POST` | `/api/unregisterDevice`   | Remove a registration                                     |
+| `GET`  | `/api/getPassesForDevice` | Query passes updated since timestamp                      |
+| `POST` | `/api/touchPass`          | Mark a pass as updated                                    |
+| `POST` | `/api/upsertPass`         | Create or update a pass record (auth token + CBORD creds) |
+| `GET`  | `/api/getPassAuthToken`   | Look up the auth token for a specific pass                |
+| `GET`  | `/api/getPassCredentials` | Look up stored CBORD credentials for a pass               |
 
 ## Convex Database Schema
 
@@ -196,11 +207,14 @@ These are called by the Cloudflare Worker — not directly by clients. All requi
 
 ### `passes`
 
-| Field                | Type     | Description                       |
-| -------------------- | -------- | --------------------------------- |
-| `passTypeIdentifier` | `string` | e.g., `pass.com.mcrich.GetCard`   |
-| `serialNumber`       | `string` | Unique pass serial number         |
-| `lastUpdated`        | `number` | Epoch ms timestamp of last update |
+| Field                 | Type                | Description                                 |
+| --------------------- | ------------------- | ------------------------------------------- |
+| `passTypeIdentifier`  | `string`            | e.g., `pass.com.mcrich.GetCard`             |
+| `serialNumber`        | `string`            | Unique pass serial number                   |
+| `authenticationToken` | `string`            | Per-pass random token for Apple Wallet auth |
+| `lastUpdated`         | `number`            | Epoch ms timestamp of last update           |
+| `cbordDeviceId`       | `string` (optional) | Stored CBORD device ID for auto-refresh     |
+| `cbordPin`            | `string` (optional) | Stored CBORD PIN for auto-refresh           |
 
 ### `registrations`
 
@@ -213,7 +227,8 @@ These are called by the Cloudflare Worker — not directly by clients. All requi
 
 - **All Convex functions are internal** — they cannot be called from the public Convex API. External access is gated through authenticated HTTP actions that validate a `Bearer <AUTH_TOKEN>` header.
 - **AUTH_TOKEN** is a shared secret set in both Cloudflare Worker secrets and Convex environment variables. It authenticates Worker → Convex communication.
-- **Apple Wallet auth** uses `Authorization: ApplePass <authenticationToken>` headers, where the token is embedded in each generated pass.
+- **Per-pass auth tokens** — each generated pass gets a unique random `authenticationToken` (via `crypto.randomUUID()`). Apple Wallet uses the `Authorization: ApplePass <token>` header on callbacks, and the Worker verifies it against the stored per-pass token in Convex.
+- **CBORD credentials** (device ID + PIN) are auto-generated per pass and stored in Convex for automatic refresh — the user's UCSC password is never stored.
 - **APNs credentials** (private key, key ID, team ID) are stored only in Convex environment variables — never in code.
 - **Signing certificates** (PEM files) are stored as Cloudflare Worker secrets — never committed to the repository.
 
@@ -224,26 +239,22 @@ Every 3 seconds:
   1. Convex cron job fires
   2. pushNotifications.js queries all registered push tokens
   3. touchAllPasses() bumps lastUpdated on every pass
-  4. Sends empty APNs push to each device
+  4. Sends empty APNs push to each device via HTTP/2
   5. iOS receives push → calls GET /v1/devices/.../registrations/...
   6. Worker queries Convex for passes updated since last check
   7. iOS calls GET /v1/passes/:passTypeId/:serialNumber for each
-  8. Worker fetches fresh barcode + balance from GET API
-  9. Worker generates and returns a new .pkpass
-  10. Apple Wallet updates the pass on the user's device
+  8. Worker retrieves stored CBORD credentials from Convex
+  9. Worker re-authenticates with GET API and fetches fresh barcode + balance
+  10. Worker generates and returns a new .pkpass
+  11. Apple Wallet updates the pass on the user's device
 ```
 
 ## Scripts
 
-| Command               | Description                            |
-| --------------------- | -------------------------------------- |
-| `npm run dev`         | Start Express server with auto-reload  |
-| `npm run dev:workers` | Start local Wrangler dev server        |
-| `npm run deploy`      | Deploy Cloudflare Worker to production |
-| `npm run tail`        | Tail Cloudflare Worker logs            |
-| `npx convex dev`      | Start Convex dev server (watch mode)   |
-| `npx convex deploy`   | Deploy Convex functions to production  |
-
-## License
-
-Private — not for redistribution.
+| Command             | Description                            |
+| ------------------- | -------------------------------------- |
+| `npm run dev`       | Start local Wrangler dev server        |
+| `npm run deploy`    | Deploy Cloudflare Worker to production |
+| `npm run tail`      | Tail Cloudflare Worker logs            |
+| `npx convex dev`    | Start Convex dev server (watch mode)   |
+| `npx convex deploy` | Deploy Convex functions to production  |
