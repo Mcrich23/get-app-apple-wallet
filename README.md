@@ -1,0 +1,249 @@
+# 🎓 GET Card – Apple Wallet
+
+An Apple Wallet pass server for UCSC GET Card dining barcodes. Generates `.pkpass` files with live barcode and balance data, and automatically refreshes passes every 5 seconds via APNs push notifications.
+
+## Architecture
+
+```
+┌─────────────┐         ┌─────────────────────┐         ┌──────────────────┐
+│ Apple Wallet │◄───────►│  Cloudflare Worker   │◄───────►│     Convex DB    │
+│   (iOS)      │  HTTPS  │  (src/worker.js)     │  HTTP   │  (convex/*.js)   │
+└──────┬───────┘         └─────────────────────┘         └────────┬─────────┘
+       │                                                          │
+       │  APNs push (every 5s)                                    │
+       │◄─────────────────────────────────────────────────────────┘
+       │                          Convex cron → pushNotifications.js
+```
+
+**How it works:**
+
+1. A user visits the landing page, enters their GET Device ID and PIN, and downloads a `.pkpass` file.
+2. When the pass is added to Apple Wallet, iOS registers the device with the Cloudflare Worker (`POST /v1/devices/.../registrations/...`).
+3. The Worker stores the device push token in Convex via authenticated HTTP calls.
+4. A Convex cron job runs every **5 seconds**, sending empty APNs push notifications to all registered devices.
+5. When iOS receives the push, it calls back to the Worker to fetch a fresh pass with up-to-date barcode and balance data from the GET API.
+
+## Project Structure
+
+```
+├── src/
+│   ├── worker.js          # Cloudflare Worker entry point & API routes
+│   ├── convexClient.js    # Authenticated HTTP client for Worker → Convex
+│   ├── passGenerator.js   # .pkpass generation using passkit-generator
+│   ├── getClient.js       # Cbord GET Services API client
+│   └── server.js          # Express server (alternative to Worker)
+├── convex/
+│   ├── schema.js          # Database schema (devices, passes, registrations)
+│   ├── registrations.js   # Internal mutations & queries for CRUD
+│   ├── http.js            # Authenticated HTTP router (Bearer token)
+│   ├── pushNotifications.js # APNs push notification action
+│   └── crons.js           # 5-second cron job for push notifications
+├── models/
+│   └── GetCard.pass/      # Pass template (pass.json, icons, logos)
+├── index.js               # Node.js/Express entry point (alternative)
+├── wrangler.jsonc          # Cloudflare Workers config
+└── package.json
+```
+
+## Prerequisites
+
+- [Node.js](https://nodejs.org/) 18+
+- [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/install-and-update/) for Cloudflare Workers
+- A [Convex](https://convex.dev) account (free tier works)
+- An [Apple Developer](https://developer.apple.com) account with:
+  - A Pass Type ID (e.g., `pass.com.example.mypass`)
+  - A pass signing certificate (`.p12` → export as PEM)
+  - Apple's WWDR intermediate certificate
+  - An APNs authentication key (`.p8` file) for push notifications
+- GET API credentials (Device ID and PIN from a UCSC GET account)
+
+## Setup
+
+### 1. Install Dependencies
+
+```bash
+npm install
+```
+
+### 2. Set Up Convex
+
+Create a new Convex project and link it to this repo:
+
+```bash
+npx convex dev
+```
+
+This will:
+- Prompt you to log in to Convex (or create an account)
+- Create a new project (or link to an existing one)
+- Deploy the schema and functions from `convex/`
+- Start watching for changes
+
+Once deployed, note your **Convex deployment URL** — it will look like `https://your-project-123.convex.cloud`. Your **HTTP actions URL** will be `https://your-project-123.convex.site`.
+
+### 3. Configure Convex Environment Variables
+
+In the [Convex dashboard](https://dashboard.convex.dev), go to **Settings → Environment Variables** and add:
+
+| Variable | Description |
+|---|---|
+| `AUTH_TOKEN` | A long random secret string (must match the Cloudflare Worker's `AUTH_TOKEN`) |
+| `APNS_KEY_ID` | 10-character Key ID from the Apple Developer portal |
+| `APNS_TEAM_ID` | Your Apple Developer Team ID |
+| `APNS_PRIVATE_KEY` | Contents of your `.p8` APNs auth key file (use `\n` for newlines) |
+| `APNS_ENVIRONMENT` | `production` or `development` (defaults to `production`) |
+
+### 4. Configure Cloudflare Worker Secrets
+
+Set each secret using the Wrangler CLI:
+
+```bash
+wrangler secret put AUTH_TOKEN         # Same value as Convex AUTH_TOKEN
+wrangler secret put CONVEX_SITE_URL    # e.g., https://your-project-123.convex.site
+wrangler secret put WEB_SERVICE_URL    # Your Worker's public URL (e.g., https://get-wallet.yourname.workers.dev)
+wrangler secret put SIGNER_CERT_PEM    # Pass signing certificate (PEM, with \n for newlines)
+wrangler secret put SIGNER_KEY_PEM     # Pass signing private key (PEM, with \n for newlines)
+wrangler secret put WWDR_PEM           # Apple WWDR certificate (PEM, with \n for newlines)
+wrangler secret put PASS_PHRASE        # Passphrase for signerKey.pem (leave empty if none)
+wrangler secret put GET_DEVICE_ID      # Optional: default GET device ID
+wrangler secret put GET_PIN            # Optional: default GET PIN
+```
+
+### 5. Deploy
+
+#### Deploy Convex (backend)
+
+```bash
+npx convex deploy
+```
+
+This deploys the Convex functions, schema, cron jobs, and HTTP routes. The 5-second cron job will start running immediately after deployment.
+
+#### Deploy Cloudflare Worker (frontend)
+
+```bash
+npm run deploy
+```
+
+This runs `wrangler deploy` and publishes the Worker to Cloudflare's edge network.
+
+## Development
+
+### Local Cloudflare Worker
+
+```bash
+npm run dev:workers
+```
+
+Starts a local Wrangler dev server at `http://localhost:8787`.
+
+### Local Convex
+
+```bash
+npx convex dev
+```
+
+Starts the Convex dev server and watches for changes to `convex/` files. Functions are deployed automatically on save.
+
+### Local Node.js/Express Server (alternative)
+
+```bash
+npm run dev
+```
+
+Starts the Express server with `--watch` for auto-reload. Requires a `.env` file (see `.env.example`).
+
+## API Endpoints
+
+### User-Facing
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/` | Landing page with Device ID / PIN form |
+| `GET` | `/pass?id=<deviceId>&code=<pin>` | Download a `.pkpass` file |
+
+### Apple Wallet Web Service
+
+These endpoints implement the [Apple Wallet Web Service protocol](https://developer.apple.com/documentation/walletpasses/adding-a-web-service-to-update-passes):
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `POST` | `/v1/devices/:deviceLibId/registrations/:passTypeId/:serialNumber` | `ApplePass` | Register device for push updates |
+| `GET` | `/v1/devices/:deviceLibId/registrations/:passTypeId` | None | List updatable passes for a device |
+| `GET` | `/v1/passes/:passTypeId/:serialNumber` | `ApplePass` | Get latest version of a pass |
+| `DELETE` | `/v1/devices/:deviceLibId/registrations/:passTypeId/:serialNumber` | `ApplePass` | Unregister device |
+| `POST` | `/v1/log` | None | Apple Wallet error log receiver |
+
+### Convex HTTP Actions (internal)
+
+These are called by the Cloudflare Worker — not directly by clients. All require `Authorization: Bearer <AUTH_TOKEN>`.
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/registerDevice` | Store device + pass registration |
+| `POST` | `/api/unregisterDevice` | Remove a registration |
+| `GET` | `/api/getPassesForDevice` | Query passes updated since timestamp |
+| `POST` | `/api/touchPass` | Mark a pass as updated |
+
+## Convex Database Schema
+
+### `devices`
+
+| Field | Type | Description |
+|---|---|---|
+| `deviceLibraryIdentifier` | `string` | Unique device ID from Apple Wallet |
+| `pushToken` | `string` | APNs push token for the device |
+
+### `passes`
+
+| Field | Type | Description |
+|---|---|---|
+| `passTypeIdentifier` | `string` | e.g., `pass.com.mcrich.GetCard` |
+| `serialNumber` | `string` | Unique pass serial number |
+| `lastUpdated` | `number` | Epoch ms timestamp of last update |
+
+### `registrations`
+
+| Field | Type | Description |
+|---|---|---|
+| `deviceId` | `Id<"devices">` | Reference to device |
+| `passId` | `Id<"passes">` | Reference to pass |
+
+## Security
+
+- **All Convex functions are internal** — they cannot be called from the public Convex API. External access is gated through authenticated HTTP actions that validate a `Bearer <AUTH_TOKEN>` header.
+- **AUTH_TOKEN** is a shared secret set in both Cloudflare Worker secrets and Convex environment variables. It authenticates Worker → Convex communication.
+- **Apple Wallet auth** uses `Authorization: ApplePass <authenticationToken>` headers, where the token is embedded in each generated pass.
+- **APNs credentials** (private key, key ID, team ID) are stored only in Convex environment variables — never in code.
+- **Signing certificates** (PEM files) are stored as Cloudflare Worker secrets — never committed to the repository.
+
+## Pass Auto-Update Flow
+
+```
+Every 5 seconds:
+  1. Convex cron job fires
+  2. pushNotifications.js queries all registered push tokens
+  3. touchAllPasses() bumps lastUpdated on every pass
+  4. Sends empty APNs push to each device
+  5. iOS receives push → calls GET /v1/devices/.../registrations/...
+  6. Worker queries Convex for passes updated since last check
+  7. iOS calls GET /v1/passes/:passTypeId/:serialNumber for each
+  8. Worker fetches fresh barcode + balance from GET API
+  9. Worker generates and returns a new .pkpass
+  10. Apple Wallet updates the pass on the user's device
+```
+
+## Scripts
+
+| Command | Description |
+|---|---|
+| `npm run dev` | Start Express server with auto-reload |
+| `npm run dev:workers` | Start local Wrangler dev server |
+| `npm run deploy` | Deploy Cloudflare Worker to production |
+| `npm run tail` | Tail Cloudflare Worker logs |
+| `npx convex dev` | Start Convex dev server (watch mode) |
+| `npx convex deploy` | Deploy Convex functions to production |
+
+## License
+
+Private — not for redistribution.
