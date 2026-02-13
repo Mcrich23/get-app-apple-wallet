@@ -5,7 +5,16 @@
     "compatibility_flags": [
         "nodejs_compat"
     ],
-    "assets": {
-        "directory": "./models"
-    }
+    "rules": [
+        {
+            "type": "Data",
+            "globs": ["**/*.png"],
+            "fallthrough": false
+        },
+        {
+            "type": "Text",
+            "globs": ["**/*.json"],
+            "fallthrough": true
+        }
+    ]
 }

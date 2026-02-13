@@ -30,7 +30,7 @@ async function makeGETRequest(service, method, params = {}) {
  * @param {string} deviceId
  * @returns {Promise<string>} sessionId
  */
-async function authenticatePIN(pin, deviceId) {
+export async function authenticatePIN(pin, deviceId) {
     const { response, exception } = await makeGETRequest(
         "authentication",
         "authenticatePIN",
@@ -56,7 +56,7 @@ async function authenticatePIN(pin, deviceId) {
  * @param {string} sessionId
  * @returns {Promise<string>} barcode payload
  */
-async function retrieveBarcode(sessionId) {
+export async function retrieveBarcode(sessionId) {
     const { response, exception } = await makeGETRequest(
         "authentication",
         "retrievePatronBarcodePayload",
@@ -73,7 +73,7 @@ async function retrieveBarcode(sessionId) {
  * @param {string} sessionId
  * @returns {Promise<Array<{accountDisplayName:string, balance:number, isActive:boolean, isAccountTenderActive:boolean}>>}
  */
-async function retrieveAccounts(sessionId) {
+export async function retrieveAccounts(sessionId) {
     const { response, exception } = await makeGETRequest(
         "commerce",
         "retrieveAccounts",
@@ -84,5 +84,3 @@ async function retrieveAccounts(sessionId) {
     }
     return response.accounts || [];
 }
-
-module.exports = { authenticatePIN, retrieveBarcode, retrieveAccounts };

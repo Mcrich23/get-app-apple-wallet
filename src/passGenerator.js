@@ -1,24 +1,32 @@
 /**
  * Apple Wallet pass generator using passkit-generator.
  * Creates .pkpass buffers with the user's GET dining barcode.
+ *
+ * For Cloudflare Workers compatibility, model files (icons, logos, pass.json)
+ * are imported as binary data via wrangler module rules instead of being read
+ * from the filesystem at runtime.
  */
 
-const path = require("path");
-const { PKPass } = require("passkit-generator");
+import { Buffer } from "node:buffer";
+import { PKPass } from "passkit-generator";
+
+// Import model files as binary ArrayBuffers (wrangler "Data" rule for *.png)
+import iconPng from "../models/GetCard.pass/icon.png";
+import icon2xPng from "../models/GetCard.pass/icon@2x.png";
+import logoPng from "../models/GetCard.pass/logo.png";
+import logo2xPng from "../models/GetCard.pass/logo@2x.png";
+
+// pass.json is imported as a text module (wrangler "Text" rule for *.json)
+import passJsonText from "../models/GetCard.pass/pass.json";
 
 /**
  * Parse a PEM string from an environment variable.
  * Env vars store PEM content with literal "\n" sequences for newlines.
- * Returns a Buffer, or undefined if the env var is not set.
  */
-function parsePemEnv(envValue) {
+function parsePemBuffer(envValue) {
     if (!envValue) return undefined;
     const pem = envValue.replace(/\\n/g, "\n");
-    // Workers: use TextEncoder if Buffer is unavailable
-    if (typeof Buffer !== "undefined") {
-        return Buffer.from(pem);
-    }
-    return new TextEncoder().encode(pem);
+    return Buffer.from(pem);
 }
 
 /**
@@ -30,15 +38,12 @@ function parsePemEnv(envValue) {
  *   WWDR_PEM        – wwdr.pem contents
  */
 function loadCertificates(env) {
-    const certs = {
-        signerCert: parsePemEnv(env.SIGNER_CERT_PEM),
+    return {
+        signerCert: parsePemBuffer(env.SIGNER_CERT_PEM),
+        signerKey: parsePemBuffer(env.SIGNER_KEY_PEM),
         signerKeyPassphrase: env.PASS_PHRASE || undefined,
+        wwdr: parsePemBuffer(env.WWDR_PEM),
     };
-
-    certs.signerKey = parsePemEnv(env.SIGNER_KEY_PEM);
-    certs.wwdr = parsePemEnv(env.WWDR_PEM);
-
-    return certs;
 }
 
 /**
@@ -50,9 +55,11 @@ function loadCertificates(env) {
  * @param {string} opts.authenticationToken – token for Apple Wallet callbacks
  * @param {string} [opts.balanceText] – formatted balance string, e.g. "$42.50"
  * @param {string} [opts.accountName] – e.g. "Flexi Dollars"
+ * @param {string} [opts.webServiceURL] – URL for Apple Wallet web service callbacks
+ * @param {object} [opts.env] – environment bindings (Workers) or process.env
  * @returns {Promise<Buffer>} .pkpass file buffer
  */
-async function generatePass({
+export async function generatePass({
     serialNumber,
     barcodePayload,
     authenticationToken,
@@ -61,7 +68,6 @@ async function generatePass({
     webServiceURL,
     env,
 }) {
-    // Use provided env, fall back to process.env for Node.js
     const e = env || process.env;
     const certs = loadCertificates(e);
 
@@ -81,18 +87,23 @@ async function generatePass({
         );
     }
 
-    // Use relative path instead of __dirname for Cloudflare Workers compatibility
-    const modelPath = path.resolve("./models/GetCard.pass");
+    // Build an in-memory buffer map of the pass model files.
+    // This avoids filesystem access, which is not available in Workers.
+    const modelBuffers = {
+        "pass.json": Buffer.from(passJsonText),
+        "icon.png": Buffer.from(iconPng),
+        "icon@2x.png": Buffer.from(icon2xPng),
+        "logo.png": Buffer.from(logoPng),
+        "logo@2x.png": Buffer.from(logo2xPng),
+    };
 
-    const pass = await PKPass.from(
+    const pass = new PKPass(
+        modelBuffers,
         {
-            model: modelPath,
-            certificates: {
-                wwdr: certs.wwdr,
-                signerCert: certs.signerCert,
-                signerKey: certs.signerKey,
-                signerKeyPassphrase: certs.signerKeyPassphrase,
-            },
+            wwdr: certs.wwdr,
+            signerCert: certs.signerCert,
+            signerKey: certs.signerKey,
+            signerKeyPassphrase: certs.signerKeyPassphrase,
         },
         {
             serialNumber,
@@ -105,7 +116,6 @@ async function generatePass({
     );
 
     // --- Barcode ---
-    // The GET app uses PDF417 barcodes scanned at UCSC dining locations
     pass.setBarcodes({
         message: barcodePayload,
         format: "PKBarcodeFormatPDF417",
@@ -138,5 +148,3 @@ async function generatePass({
 
     return pass.getAsBuffer();
 }
-
-module.exports = { generatePass };

@@ -4,18 +4,12 @@
     "description": "Apple Wallet pass server for UCSC GET Card barcodes",
     "main": "src/worker.js",
     "scripts": {
-        "start": "node index.js",
-        "dev": "node --watch index.js",
-        "dev:workers": "wrangler dev",
+        "dev": "wrangler dev",
         "deploy": "wrangler deploy",
         "tail": "wrangler tail"
     },
     "dependencies": {
-        "better-sqlite3": "^11.0.0",
-        "express": "^4.21.0",
-        "jsonwebtoken": "^9.0.2",
-        "passkit-generator": "^3.2.0",
-        "uuid": "^9.0.1"
+        "passkit-generator": "^3.2.0"
     },
     "devDependencies": {
         "wrangler": "^4.65.0"

@@ -7,7 +7,6 @@
  * or via `wrangler secret put` appears as a property on `env`.
  */
 
-import { v4 as uuidv4 } from "uuid";
 import { authenticatePIN, retrieveBarcode, retrieveAccounts } from "./getClient";
 import { generatePass } from "./passGenerator";
 
@@ -159,7 +158,7 @@ export default {
 
             // ── Download pass ──
             if (request.method === "GET" && url.pathname === "/pass") {
-                const serialNumber = env.GET_DEVICE_ID || uuidv4();
+                const serialNumber = env.GET_DEVICE_ID || crypto.randomUUID();
                 const passBuffer = await buildPassBuffer(serialNumber, env);
 
                 return new Response(passBuffer, {
