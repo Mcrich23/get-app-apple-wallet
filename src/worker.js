@@ -11,6 +11,7 @@ import { v4 as uuidv4 } from "uuid";
 import { authenticatePIN, retrieveBarcode, retrieveAccounts } from "./getClient";
 import { generatePass } from "./passGenerator";
 import { getConvexClient } from "./convexClient";
+import passJsonBuffer from "../models/GetCard.pass/pass.json";
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
@@ -63,7 +64,7 @@ function json(data, status = 200, headers = {}) {
 /**
  * Generate a fresh pass buffer by fetching live data from the GET API.
  */
-async function buildPassBuffer(env, request, id, code) {
+async function buildPassBuffer(env, request, id, code, existingAuthToken) {
     // Derive webServiceURL from the incoming request origin; env var is an optional override
     const webServiceURL = env.WEB_SERVICE_URL || new URL(request.url).origin;
     const pin = code || env.GET_PIN;
@@ -76,8 +77,11 @@ async function buildPassBuffer(env, request, id, code) {
     // Use deviceId as serialNumber if available, or fallback to UUID
     const serialNumber = deviceId || uuidv4();
 
-    // Generate a unique random authentication token for this pass
-    const authenticationToken = crypto.randomUUID();
+    // Generate a unique random authentication token for this pass, or reuse existing
+    const authenticationToken = existingAuthToken || crypto.randomUUID();
+
+    // Parse pass.json to get passTypeIdentifier
+    const passJson = JSON.parse(new TextDecoder().decode(passJsonBuffer));
 
     const sessionId = await authenticatePIN(pin, deviceId);
     const barcodePayload = await retrieveBarcode(sessionId);
@@ -108,7 +112,7 @@ async function buildPassBuffer(env, request, id, code) {
         env,
     });
 
-    return { passBuffer, serialNumber, authenticationToken };
+    return { passBuffer, serialNumber, authenticationToken, passTypeIdentifier: passJson.passTypeIdentifier };
 }
 
 // ─── Landing page HTML ───────────────────────────────────────────────
@@ -198,14 +202,14 @@ export default {
                 const code = url.searchParams.get("code");
 
                 // Allow fallback if not provided in URL
-                const { passBuffer, serialNumber, authenticationToken } = await buildPassBuffer(env, request, id, code);
+                const { passBuffer, serialNumber, authenticationToken, passTypeIdentifier } = await buildPassBuffer(env, request, id, code);
 
                 // Store the per-pass auth token in Convex
                 const convex = getConvexClient(env);
                 await convex.registerDevice({
                     deviceLibraryIdentifier: "initial-download",
                     pushToken: "none",
-                    passTypeIdentifier: env.PASS_ID,
+                    passTypeIdentifier,
                     serialNumber,
                     authenticationToken,
                 });
@@ -297,10 +301,17 @@ export default {
                 if (!(await verifyAppleAuth(request, env, params.passTypeId, params.serialNumber))) return json({ message: "Unauthorized" }, 401);
 
                 console.log(`[Update] Generating fresh pass for serial=${params.serialNumber}`);
-                const { passBuffer } = await buildPassBuffer(env, request, params.serialNumber);
+
+                // Reuse existing auth token for pass updates
+                const convex = getConvexClient(env);
+                const existingToken = await convex.getPassAuthToken({
+                    passTypeIdentifier: params.passTypeId,
+                    serialNumber: params.serialNumber,
+                });
+
+                const { passBuffer } = await buildPassBuffer(env, request, params.serialNumber, undefined, existingToken);
 
                 // Touch the pass in Convex to track when it was last served
-                const convex = getConvexClient(env);
                 await convex.touchPass({
                     passTypeIdentifier: params.passTypeId,
                     serialNumber: params.serialNumber,
