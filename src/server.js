@@ -56,11 +56,12 @@ async function buildPassBuffer(serialNumber) {
     const balanceText = `$${totalBalance.toFixed(2)}`;
 
     // Get primary account name
-    const primaryAccount =
-        activeAccounts.find((a) => a.accountType === 3) || activeAccounts[0];
-    const accountName = primaryAccount
-        ? primaryAccount.accountDisplayName
-        : "GET Account";
+    // const primaryAccount =
+    //     activeAccounts.find((a) => a.accountType === 3) || activeAccounts[0];
+    // const accountName = primaryAccount
+    //     ? primaryAccount.accountDisplayName
+    //     : "GET Account";
+    const accountName = "Slug Points"
 
     return generatePass({
         serialNumber,

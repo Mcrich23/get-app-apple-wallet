@@ -11,6 +11,8 @@ import iconBuffer from "../models/GetCard.pass/icon.png";
 import icon2xBuffer from "../models/GetCard.pass/icon@2x.png";
 import logoBuffer from "../models/GetCard.pass/logo.png";
 import logo2xBuffer from "../models/GetCard.pass/logo@2x.png";
+import stripBuffer from "../models/GetCard.pass/strip.png";
+import strip2xBuffer from "../models/GetCard.pass/strip@2x.png";
 
 /**
  * Parse a PEM string from an environment variable.
@@ -119,6 +121,8 @@ async function generatePass({
     pass.addBuffer("icon@2x.png", Buffer.from(icon2xBuffer));
     pass.addBuffer("logo.png", Buffer.from(logoBuffer));
     pass.addBuffer("logo@2x.png", Buffer.from(logo2xBuffer));
+    pass.addBuffer("strip.png", Buffer.from(stripBuffer));
+    pass.addBuffer("strip@2x.png", Buffer.from(strip2xBuffer));
 
     // --- Barcode ---
     // The GET app uses PDF417 barcodes scanned at UCSC dining locations
@@ -137,20 +141,20 @@ async function generatePass({
         });
     }
 
-    if (accountName) {
-        pass.secondaryFields.push({
-            key: "account",
-            label: "ACCOUNT",
-            value: accountName,
-        });
-    }
+    // if (accountName) {
+    //     pass.secondaryFields.push({
+    //         key: "account",
+    //         label: "ACCOUNT",
+    //         value: accountName,
+    //     });
+    // }
 
-    pass.secondaryFields.push({
-        key: "location",
-        label: "CAMPUS",
-        value: "UC Santa Cruz",
-        textAlignment: "PKTextAlignmentRight",
-    });
+    // pass.secondaryFields.push({
+    //     key: "location",
+    //     label: "CAMPUS",
+    //     value: "UC Santa Cruz",
+    //     textAlignment: "PKTextAlignmentRight",
+    // });
 
     return pass.getAsBuffer();
 }
