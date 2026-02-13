@@ -23,7 +23,7 @@ import passJsonText from "../models/GetCard.pass/pass.json";
  * Parse a PEM string from an environment variable.
  * Env vars store PEM content with literal "\n" sequences for newlines.
  */
-function parsePemBuffer(envValue) {
+function envPemToBuffer(envValue) {
     if (!envValue) return undefined;
     const pem = envValue.replace(/\\n/g, "\n");
     return Buffer.from(pem);
@@ -39,10 +39,10 @@ function parsePemBuffer(envValue) {
  */
 function loadCertificates(env) {
     return {
-        signerCert: parsePemBuffer(env.SIGNER_CERT_PEM),
-        signerKey: parsePemBuffer(env.SIGNER_KEY_PEM),
+        signerCert: envPemToBuffer(env.SIGNER_CERT_PEM),
+        signerKey: envPemToBuffer(env.SIGNER_KEY_PEM),
         signerKeyPassphrase: env.PASS_PHRASE || undefined,
-        wwdr: parsePemBuffer(env.WWDR_PEM),
+        wwdr: envPemToBuffer(env.WWDR_PEM),
     };
 }
 
@@ -68,8 +68,8 @@ export async function generatePass({
     webServiceURL,
     env,
 }) {
-    const e = env || process.env;
-    const certs = loadCertificates(e);
+    const envVars = env || process.env;
+    const certs = loadCertificates(envVars);
 
     if (!certs.signerCert) {
         throw new Error(
@@ -108,7 +108,7 @@ export async function generatePass({
         {
             serialNumber,
             authenticationToken,
-            webServiceURL: webServiceURL || e.WEB_SERVICE_URL || "",
+            webServiceURL: webServiceURL || envVars.WEB_SERVICE_URL || "",
             organizationName: "UCSC GET Card",
             description: "UCSC GET Dining Card",
             logoText: "GET Card",
