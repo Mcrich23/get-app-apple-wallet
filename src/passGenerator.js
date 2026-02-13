@@ -139,13 +139,13 @@ async function generatePass({
         });
     }
 
-    // if (accountName) {
-    //     pass.secondaryFields.push({
-    //         key: "account",
-    //         label: "ACCOUNT",
-    //         value: accountName,
-    //     });
-    // }
+    if (accountName) {
+        pass.secondaryFields.push({
+            key: "account",
+            label: "ACCOUNT",
+            value: accountName,
+        });
+    }
 
     pass.secondaryFields.push({
         key: "location",
