@@ -2,6 +2,9 @@
 
 An Apple Wallet pass server for UCSC GET Card dining barcodes. Generates `.pkpass` files with live barcode and balance data, and automatically refreshes passes every 10 seconds via APNs push notifications.
 
+> [!Warning]
+> This project stores an irrovocable authentication session with GET on a server indefinitely. It will also send an extreme amount of push notifications to your iDevices which may result in additional battery drain. To get similar benifits without these caveats, please check out my [Siri Shortcut](https://www.icloud.com/shortcuts/004ac2ed06bb46b980c12740554c7657).
+
 ## Architecture
 
 ```
