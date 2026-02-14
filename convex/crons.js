@@ -3,11 +3,11 @@ import { internal } from "./_generated/api";
 
 const crons = cronJobs();
 
-// Send push notifications to all registered devices every 10 seconds.
+// Send push notifications to all registered devices every 5 minutes.
 // This triggers Apple Wallet to fetch the latest pass data (barcode, balance).
 crons.interval(
     "push pass updates",
-    { seconds: 10 },
+    { minutes: 5 },
     internal.pushNotifications.sendPushNotifications
 );
 
